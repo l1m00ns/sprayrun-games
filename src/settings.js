@@ -2,6 +2,7 @@
 // Values live in save.settings (and are therefore part of the cloud save).
 export const SCHEMA = [
   { tab: 'Gameplay', items: [
+    { k: 'lang', label: 'Language', type: 'select', def: 'en', opts: [['en', 'English'], ['fr', 'Français']] },
     { k: 'controls', label: 'Control feel', type: 'select', def: 'snappy', opts: [['snappy', 'Snappy (instant)'], ['classic', 'Classic (authentic)']], hint: 'Snappy: near-instant lane switches, inputs applied the moment you press.' },
     { k: 'showTimer', label: 'Show run timer', type: 'toggle', def: true },
     { k: 'autoPause', label: 'Pause when the tab is hidden', type: 'toggle', def: true },

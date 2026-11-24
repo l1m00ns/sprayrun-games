@@ -9,6 +9,8 @@ import { save, persist, resetSave, setPersistHook } from './save.js';
 import { initHub } from './hub.js';
 import { dressed } from './cosmetics.js';
 import { createDuel } from './duel.js';
+import { setLang, getLang, detectLang } from './i18n.js';
+import { createOnboarding, openLanguagePicker } from './onboarding.js';
 import { cheats, GROUPS as CHEAT_GROUPS, tainted, activeCount, konamiListener, renderGroup as renderCheatGroup, unlocked as secretUnlocked, setUnlocked as setSecretUnlocked, resetAll as resetCheats } from './secret.js';
 import { SCHEMA as SETTINGS, defaults as settingDefaults, renderTab as renderSettingsTab } from './settings.js';
 import { Sky, themeAt } from './sky.js';
@@ -82,6 +84,7 @@ function setupComposer() {
 // Apply one setting (or all of them when key is undefined). Cheap, safe to call any time.
 function applySettings(key) {
   const s = save.settings, all = key === undefined, H = document.documentElement;
+  if (all || key === 'lang') { setLang(s.lang || detectLang()); const c = $('tbLangCode'); if (c) c.textContent = getLang().toUpperCase(); }
   if (all || key === 'reduceMotion') H.classList.toggle('reduce', !!s.reduceMotion);
   if (all || key === 'highContrast') H.classList.toggle('hc', !!s.highContrast);
   if (all || key === 'colorBlind') H.classList.toggle('cb', !!s.colorBlind);
@@ -150,7 +153,7 @@ const menuBiome = () => { const m = curMap(); return m === 'tour' ? 'city' : m; 
 const worldMode = () => { const m = curMap(); return m === 'tour' ? ['tour', 'city'] : ['fixed', m]; };
 const net = new Net();
 const mp = { active: false, running: false, counting: false, players: new Map(), ghosts: new Map(), room: null, seed: 0, sendT: 0, hudT: 0, results: null };
-let duelCtl = null, queueDuelRef = null;
+let duelCtl = null, queueDuelRef = null, onboarding = null;
 let botOn = /[?&]bot/.test(location.search);
 const botActive = () => botOn || cheats.bot;
 const godNow = () => cheats.god || cheats.noclip || (cheats.bot && cheats.botGod);
@@ -214,13 +217,14 @@ async function boot() {
   resize();
   setLoad(0.95, 'Ready!');
   await tick();
-  for (const [k, v] of Object.entries(settingDefaults())) if (save.settings[k] === undefined) save.settings[k] = v;
+  for (const [k, v] of Object.entries(settingDefaults())) if (k !== 'lang' && save.settings[k] === undefined) save.settings[k] = v; // lang stays unset until the welcome flow (so the browser language can be detected)
   applySettings();
   setupUI();
   missions.ensureMissions();
   enterMenu(true);
   clearInterval(tipTimer);
   $('loading').classList.add('hidden');
+  if (!save.onboarded) onboarding.start();
   last = performance.now();
   requestAnimationFrame(frame);
 }
@@ -333,6 +337,7 @@ function startRun(opts = {}) {
   save.stats.runs++;
   resetRun();
   run.revives = 0; run.chestBoards = 0;
+  run.boostT = 0; run.boostMul = 1; run.noCoinsT = 0; run.duelCount = 0; run.deathSaved = false; P.secondLife = false;
   run.cheated = tainted() || !!opts.ltm;
   run.ltm = opts.ltm || null; run.warpAt = 20 + Math.random() * 32; run.warping = false;
   $('h-cheat').classList.toggle('hidden', !(run.cheated || (cheats.bot && cheats.botTag)));
@@ -521,6 +526,9 @@ function breakBoard() {
 
 function die(reason) {
   if (state !== 'playing') return;
+  // Gold Rush: the duel happens at least once per game. A crash before the first one warps into the arena instead.
+  if (run.ltm && !run.duelCount && !run.warping && !mp.active) { run.deathSaved = true; P.inv = 6; world.clearAhead(60); toast('GOLD RUSH!'); beginWarp(false); return; }
+  if (P.secondLife) { P.secondLife = false; P.inv = Math.max(P.inv, 3.2); shake = 1; flash = 1; world.clearAhead(40); audio.sfx.power(); toast('SECOND LIFE!'); return; }
   state = 'dying';
   run.dieT = 0;
   run.deathReason = reason;
@@ -606,7 +614,7 @@ function botThink(opt = {}) {
   const wCoin = style === 'coins' ? 5 : style === 'safe' ? 0.5 : 2;
   const crossOk = (from, to) => { // can we pass through the lanes in between without hitting something at the crossing moment?
     const dir = Math.sign(to - from);
-    for (let l = from + dir; l !== to + dir; l += dir) if (info[l].block < speed * 0.22 + 1.2) return false;
+    for (let l = from + dir; l !== to + dir; l += dir) if (info[l].block < speed * (snappy() ? 0.14 : 0.3) + 1.2) return false; // time spent crossing that lane
     return true;
   };
   let best = cur, bestScore = -1e9;
@@ -614,11 +622,12 @@ function botThink(opt = {}) {
     if (l !== cur && !crossOk(cur, l)) continue;
     const free = Math.min(info[l].block, look * 1.5);
     const hazard = (info[l].jump < look * 0.6 ? 2.5 : 0) + (info[l].roll < look * 0.6 ? 2.5 : 0);
-    const sc = free + coinsIn[l] * wCoin - hazard - Math.abs(l - cur) * (style === 'safe' ? 3 : 1.2) + (l === cur ? 1.5 : 0); // hysteresis
+    const coinBonus = free >= look * 0.85 ? coinsIn[l] * wCoin : Math.min(coinsIn[l] * wCoin, 3); // never trade a clear road for coins
+    const sc = free + coinBonus - hazard - Math.abs(l - cur) * (style === 'safe' ? 3 : 1.2) + (l === cur ? 1.5 : 0); // hysteresis
     if (sc > bestScore) { bestScore = sc; best = l; }
   }
   const doLanes = opt.pro || opt.lanes, doMoves = opt.pro || opt.assist;
-  if (doLanes && best !== cur && (info[cur].block < look * 1.25 || coinsIn[best] > coinsIn[cur] + 1.5) && botCd <= 0) {
+  if (doLanes && best !== cur && (info[cur].block < look * 1.6 || (coinsIn[best] > coinsIn[cur] + 1.5 && info[best].block > look)) && botCd <= 0) {
     pushAction(best < cur ? 'left' : 'right');
     botCd = 0.06;
     return;
@@ -630,7 +639,8 @@ function botThink(opt = {}) {
     else if (style === 'show' && !P.grounded && P.y > 1.2 && P.vy < 1 && botCd <= 0) { pushAction('roll'); botCd = 0.5; } // jump-roll dive combo
   }
   // last resort: every reachable lane is about to be blocked -> burn a hoverboard instead of crashing
-  if (opt.pro && cheats.botBoards && !P.onBoard && (save.boards > 0 || cheats.infBoards || true) && info[cur].block < speed * 0.2 && [0, 1, 2].every((l) => info[l].block < speed * 0.3)) pushAction('board');
+  const escape = [cur - 1, cur + 1].some((l) => l >= 0 && l <= 2 && info[l].block > speed * 0.3); // a neighbouring lane that is still open
+  if (opt.pro && cheats.botBoards && !P.onBoard && (save.boards > 0 || cheats.infBoards) && info[cur].block < speed * 0.2 && !escape) pushAction('board');
 }
 let botCd = 0;
 
@@ -647,7 +657,8 @@ function updatePlaying(dt) {
     } else {
       let tt = run.t - (run.introOn ? INTRO_T : 0) + cheats.startPct * 1.79; // the speed curve starts when the sprint does
       if (cheats.noProgress) tt = Math.min(tt, 20 + cheats.startPct * 1.79);
-      const target = cheats.lockSpeed ? cheats.lockValue : C.speedAtTime(tt) * cheats.speedMul;
+      let target = cheats.lockSpeed ? cheats.lockValue : C.speedAtTime(tt) * cheats.speedMul;
+      if (run.boostT > 0) { run.boostT -= dt; target = Math.min(target * run.boostMul, C.SPEED_CAP * 1.1); } // Gold Rush winner boost (capped below the anti-cheat ceiling)
       run.speed = cheats.instantSpeed ? target : damp(run.speed, target * (P.stumbleT > 0 ? 0.8 : 1), 2.5, dt);
     }
   }
@@ -672,6 +683,7 @@ function updatePlaying(dt) {
   }
   if (P.onBoard) { P.boardT -= dt; if (P.boardT <= 0) { P.onBoard = false; toast('Board expired'); updateHudStatic(); } }
   P.inv = Math.max(0, P.inv - dt);
+  if (run.noCoinsT > 0) run.noCoinsT -= dt;
   P.bump = Math.max(0, P.bump - dt);
   P.stumbleT = Math.max(0, P.stumbleT - dt);
   P.coyote = Math.max(0, P.coyote - dt);
@@ -751,6 +763,7 @@ function updatePlaying(dt) {
   // coins & items
   const pp = { x: P.x, y: P.y, h: P.h };
   world.coins.update(dt, speed, pp, pw.magnet > 0 ? 8.5 * cheats.magnetRange : 0, time, (c) => {
+    if (run.noCoinsT > 0) return; // the Gold Rush reward switches coin collection off for 8 s
     if (run.mode === 'nocoin') {
       if (P.inv > 0 || state !== 'playing' || godNow()) return;
       if (P.onBoard) { breakBoard(); return; }
@@ -1118,6 +1131,8 @@ function setupUI() {
   konamiListener(() => { const tg = document.activeElement && document.activeElement.tagName; if (tg === 'INPUT' || tg === 'TEXTAREA') return; openSecret(true); });
   $('btnReset').onclick = async () => { if (await confirmDlg('This erases coins, characters, upgrades and records stored on this device.', { danger: true, yes: 'ERASE' })) { resetSave(); location.reload(); } };
   initHubUI();
+  onboarding = createOnboarding({ save, persist, applySettings, click: () => audio.sfx.click(), openAccount: () => { hubUI.setBarVisible(true); hubUI.open('account'); }, done: () => { renderMenu(); } });
+  $('tbLang').onclick = () => { audio.initAudio(); audio.sfx.click(); openLanguagePicker({ save, persist, onChange: () => { $('tbLangCode').textContent = getLang().toUpperCase(); } }); };
   duelCtl = createDuel({ renderer, canvas, save, cheats, audio, send: (o) => net.send(o), myId: () => net.id, serverNow: api.serverNow, onEnd: showDuelResult });
   window.addEventListener('resize', () => duelCtl.resize());
   $('drHome').onclick = () => { audio.sfx.click(); show('duelres', false); if (mp.room) leaveRoom(); else enterMenu(); };
@@ -1459,13 +1474,14 @@ function setupOnline() {
     audio.sfx[m.delta >= 0 ? 'mission' : 'deny']();
   });
   net.on('pong', (m) => { online.ping = Math.max(0, Date.now() - m.c); });
-  net.on('err', (m) => { $('lobErr').textContent = m.msg; });
-  net.on('warp', () => { if (mp.active && state === 'playing') beginWarp(true); });
+  net.on('err', (m) => { $('lobErr').textContent = m.msg; if (m.code === 'vpn_blocked') showVpnBlocked(online.vpn || {}); });
+  net.on('warp', () => { if (mp.active && ['playing', 'dying', 'over'].includes(state)) beginWarp(true); });
+  net.on('resume', (m) => { duelResume = m; maybeResume(); });
   net.on('duel', (m) => {
     if (m.phase === 'start') {
       const mine = m.players.find((p) => p.id === net.id), foe = m.players.find((p) => p.id !== net.id) || {};
       show('lobby', false); show('mpres', false);
-      enterArena({ online: true, spawn: mine ? mine.spawn : 0, foeName: foe.name, foeChar: foe.char, liveIn: m.countdown });
+      enterArena({ online: true, inRun: true, spawn: mine ? mine.spawn : 0, foeName: foe.name, foeChar: foe.char, liveIn: m.countdown });
     } else duelCtl.onNet('duel', m);
   });
   for (const tp of ['ds', 'dfire', 'dhit', 'dfix', 'dend']) net.on(tp, (m) => duelCtl.onNet(tp, m));
@@ -1481,7 +1497,7 @@ function setupOnline() {
 
   // silent boot: resume the account if a server is reachable
   bootOnline();
-  setInterval(async () => { if (state === 'menu' && await api.events()) hubUI.refreshChrome(); }, 60000); // event windows flip at midnight UTC
+  setInterval(async () => { if (state === 'menu') { if (await api.events()) hubUI.refreshChrome(); checkAppeals(); } }, 60000); // event windows flip at midnight UTC
 }
 
 // ---------------------------------------------------------------- hub / economy / cloud / sanctions
@@ -1497,7 +1513,7 @@ function syncEconomy() {
   save.unlocked = [...inv.chars]; save.cos = [...inv.cos]; save.equip = { ...inv.equip };
   const i = CHARACTERS.findIndex((c) => c.id === inv.equip.char);
   if (i >= 0 && inv.chars.includes(inv.equip.char)) { const changed = charIndex !== i; charIndex = i; save.character = inv.equip.char; if (changed || true) buildPlayer(); }
-  persist(); renderMenuChrome();
+  persist(); renderMenuChrome(); if (typeof renderProfile === 'function') renderProfile();
 }
 
 const cloud = { ver: 0, timer: null, status: 'guest', last: 0, busy: false };
@@ -1545,8 +1561,10 @@ setPersistHook(() => { if (online.player && online.player.hasAccount) { clearTim
 async function bootOnline() {
   if (!(await api.health())) { renderMenuChrome(); return false; }
   await api.ensureAccount(save.mpName || 'Runner');
+  if (online.vpn) { renderMenuChrome(); showVpnBlocked(online.vpn); return false; }
   await api.events();
   syncEconomy(); await cloudPull(); renderProfile();
+  afterLogin(); checkAppeals();
   if (state === 'menu') renderMenu();
   hubUI.checkUpdates();
   const p = online.player;
@@ -1554,7 +1572,7 @@ async function bootOnline() {
   return true;
 }
 async function onSignedIn(importedCoins) {
-  await api.events(); syncEconomy(); await cloudPull(); renderProfile(); renderMenu();
+  await api.events(); syncEconomy(); await cloudPull(); renderProfile(); renderMenu(); afterLogin();
   if (importedCoins) notify('PROGRESS IMPORTED', `Your offline progress was carried over (up to ${fmt(importedCoins)} coins - the import is capped).`);
 }
 async function signOut() { await cloudPush(true); await api.logout(); net.close(); cloud.status = 'guest'; cloud.ver = 0; renderProfile(); renderMenuChrome(); await api.ensureAccount(save.mpName || 'Runner'); syncEconomy(); renderMenu(); }
@@ -1612,13 +1630,38 @@ function openSecret(first) {
   }
   drawSecret(); show('secret', true);
 }
+// ---------------------------------------------------------------- VPN / device / appeals
+let vpnShown = 0;
+function showVpnBlocked(info) {
+  if (Date.now() - vpnShown < 4000) return;
+  vpnShown = Date.now();
+  dialog({ title: 'VPN DETECTED', message: `${info && info.brand ? 'Network: ' + info.brand + '. ' : ''}A VPN, proxy or datacenter connection was detected, so online play is disabled. Turn it off and retry. Offline play still works.`, yes: 'RETRY', no: 'PLAY OFFLINE' })
+    .then((retry) => { if (retry) { online.vpn = null; bootOnline(); } });
+}
+async function afterLogin() {
+  const r = await api.reportDevice(true).catch(() => null);
+  if (r && r.restricted) showSanction({ error: 'kicked', reason: 'This device is linked to a suspended account.', until: Date.now() + 3600e3 });
+  else if (r && r.network && r.network.blocked) showVpnBlocked({ brand: r.network.brand });
+}
+async function checkAppeals() {
+  if (!online.player || !online.token) return;
+  const d = await api.appeals();
+  if (!d) return;
+  const seen = save.seenAppeals || (save.seenAppeals = []);
+  for (const a of d.appeals) {
+    if (a.status !== 'decided' || seen.includes(a.id) || Date.now() - a.decided > 7 * 86400e3) continue;
+    seen.push(a.id); persist();
+    await api.refreshMe(); renderProfile(); renderMenuChrome();
+    await notify(a.decision === 'overturned' ? 'APPEAL APPROVED' : 'APPEAL REVIEWED', a.decision === 'overturned' ? `Appeal #${a.id}: the sanction was overturned. Your access is restored.` : `Appeal #${a.id}: the sanction stands.`);
+  }
+}
 let sanctionShown = 0;
 function showSanction(info) {
   if (!info || Date.now() - sanctionShown < 4000) return;
   sanctionShown = Date.now();
   const banned = info.error === 'banned';
-  dialog({ title: banned ? 'ACCOUNT SUSPENDED' : 'REMOVED FROM ONLINE PLAY', message: `${info.reason || 'Fair-play violation.'}${info.until ? ` You can play online again at ${new Date(info.until).toLocaleTimeString()}.` : ''}\nSolo play still works. If you think this is a mistake, open a request in Support.`, yes: 'OPEN SUPPORT', no: 'CLOSE' })
-    .then((go) => { if (go) { hubUI.setBarVisible(true); hubUI.open('support'); } });
+  dialog({ title: banned ? 'ACCOUNT SUSPENDED' : 'REMOVED FROM ONLINE PLAY', message: `${info.reason || 'Fair-play violation.'}${info.until ? ` You can play online again at ${new Date(info.until).toLocaleTimeString()}.` : ''}\nSolo play still works. If you think this is a mistake, open a request in Support.`, yes: 'CONTEST', no: 'CLOSE' })
+    .then((go) => { if (go) hubUI.openAppeals(); });
 }
 // ---------------------------------------------------------------- Gold Rush duel (limited-time mode)
 async function startDuel() {
@@ -1635,16 +1678,55 @@ async function startDuel() {
 function startSoloDuelRun() { show('lobby', false); hubUI.setBarVisible(false); tryPlay({ ltm: 'goldrush' }); }
 function beginWarp(onlineMatch) {
   run.warping = true; $('warp').classList.add('on'); audio.sfx.warp(); toast('GOLD RUSH!');
-  if (!onlineMatch) setTimeout(() => { $('warp').classList.remove('on'); if (state === 'playing') enterArena({ online: false }); }, 1500);
+  if (!onlineMatch) setTimeout(() => { $('warp').classList.remove('on'); if (state === 'playing') enterArena({ online: false, inRun: true }); }, 1500);
 }
 function enterArena(o) {
   $('warp').classList.remove('on');
-  show('hud', false); show('pause', false); show('menu', false); hubUI.setBarVisible(false);
+  duelInfo = { inRun: !!o.inRun, online: !!o.online, wasDead: state === 'dying' || state === 'over' };
+  duelResume = null; duelBannerDone = false;
+  show('hud', false); show('pause', false); show('menu', false); show('over', false); show('mpres', false); hubUI.setBarVisible(false);
   state = 'duel'; audio.stopWind(); audio.setMood('menu');
   duelCtl.start({ online: !!o.online, spawn: o.spawn || 0, meName: (online.player && online.player.name) || 'YOU', foeName: o.foeName || 'GOLD BOT', foeChar: o.foeChar || (CHARACTERS[(charIndex + 3) % CHARACTERS.length]).id, liveIn: o.liveIn ?? 3, level: o.level });
   canvas.focus();
 }
+let duelInfo = null, duelResume = null, duelBannerDone = false;
+// Result inside a game: a short banner, then the race goes on (with the winner's reward).
+function duelBanner(r) {
+  duelCtl.stop(); state = 'paused'; show('hud', true); duelBannerDone = false; duelLast = r;
+  $('drbT').textContent = { win: 'VICTORY', lose: 'DEFEAT', draw: 'DRAW' }[r.result];
+  $('drbT').className = 'ink ' + r.result;
+  $('drbS').textContent = r.result === 'win' ? (r.online ? 'First blood!' : 'You win the Gold Rush!') : r.result === 'draw' ? 'Nobody went down. The race goes on.' : 'Back to the track.';
+  $('drBanner').classList.remove('hidden');
+  audio.sfx[r.result === 'win' ? 'mission' : r.result === 'lose' ? 'deny' : 'click']();
+  setTimeout(() => { duelBannerDone = true; maybeResume(); }, 2300);
+  if (r.online) setTimeout(() => { if (state === 'paused' && !duelResume) { duelResume = { winner: null, boost: null, first: false, fallback: true }; maybeResume(); } }, 6500);
+}
+let duelLast = null;
+function maybeResume() {
+  if (!duelInfo || !duelInfo.inRun || state !== 'paused' || !duelBannerDone) return;
+  const r = duelLast || { result: 'draw' };
+  const rs = duelInfo.online ? duelResume : { winner: r.result === 'win' ? 'me' : null, first: false, boost: r.result === 'win' ? { sec: 8, speed: 1.25, noCoinsSec: 8, secondLife: true } : null };
+  if (!rs) return;
+  $('drBanner').classList.add('hidden');
+  const mine = rs.winner !== null && (rs.winner === 'me' || rs.winner === net.id);
+  if (!duelInfo.online && run.deathSaved && r.result !== 'win') { run.deathSaved = false; state = 'playing'; run.warping = false; duelInfo = null; die('crash'); return; } // the saved crash comes back
+  run.deathSaved = false; run.warping = false; run.duelCount = (run.duelCount || 0) + 1; run.warpAt = run.t + 40 + Math.random() * 45;
+  const wasDead = duelInfo.wasDead;
+  duelInfo = null;
+  if (wasDead && !(mine && rs.boost)) { state = 'over'; show('hud', false); show('mpres', true); $('mpTitle').textContent = 'YOU ARE OUT'; $('mpWait').textContent = 'Waiting for the race to end...'; return; }
+  // back on the track
+  state = 'playing'; show('hud', true); show('mpres', false);
+  audio.setMood('play'); audio.startWind();
+  Object.assign(P, { inv: 3.5, bump: 1, stumbleT: 0, jetting: false, vy: 0, y: P.ground, grounded: true, rolling: false, rollT: 0, h: C.PLAYER_H });
+  world.clearAhead(70); G.active = false; G.shown = false; guard.root.visible = false; dog.root.visible = false; $('h-guard').classList.remove('on');
+  if (wasDead) run.speed = C.SPEED_START;
+  if (mine && rs.first) { toast('NEW BADGE: GOLD EAGLE!'); hubUI.toast('Profile badge unlocked: Gold Eagle'); api.refreshMe().then(() => renderMenuChrome()); }
+  else if (mine && rs.boost) { run.boostT = rs.boost.sec; run.boostMul = rs.boost.speed; run.noCoinsT = rs.boost.noCoinsSec; P.secondLife = rs.boost.secondLife; toast('BOOST + SECOND LIFE!'); audio.sfx.power(); }
+  updateHudStatic();
+}
 function showDuelResult(r) {
+  if (duelInfo && duelInfo.inRun && (r.reason === 'kill' || r.reason === 'timeout')) return duelBanner(r);
+  duelInfo = null;
   duelCtl.stop(); state = 'duelres';
   $('drTitle').textContent = { win: 'VICTORY', lose: 'DEFEAT', draw: 'DRAW' }[r.result];
   $('drTitle').className = 'ink ' + r.result;
@@ -1669,6 +1751,9 @@ function renderProfile() {
   $('pfName').textContent = p ? p.name : 'Offline';
   $('pfTier').textContent = p ? p.tier : '-';
   $('pfRating').textContent = p ? fmt(p.rating) : '-';
+  const rk = p && p.ranked, rn = $('rankedNote');
+  if (rn) { const min = rk ? Math.round(rk.minSeconds / 60) : 0; rn.textContent = !rk ? '' : rk.unlocked ? 'Ranked unlocked' : `Ranked unlocks after ${min} min of play - ${Math.min(min, Math.floor(rk.played / 60))}/${min} min`; }
+  const rb = $('btnRanked'); if (rb) rb.disabled = !!(rk && !rk.unlocked);
   const pill = $('mOnline');
   if (pill) pill.innerHTML = p ? `<span class="dotlive"></span>${escapeHtml(p.name)} &middot; ${fmt(p.rating)} ${p.tier}` : '<span class="dotlive off"></span>Offline';
 }
@@ -1987,6 +2072,7 @@ function updateWarnings() {
 }
 function updateHud() {
   $('hTime').textContent = fmtTime(run.t);
+  { const b = $('h-boost'), on = run.boostT > 0 || run.noCoinsT > 0 || P.secondLife; b.classList.toggle('hidden', !on); if (on) b.textContent = `${run.boostT > 0 ? 'BOOST ' + Math.ceil(run.boostT) + 's  ' : ''}${run.noCoinsT > 0 ? 'COINS OFF ' + Math.ceil(run.noCoinsT) + 's  ' : ''}${P.secondLife ? '+1 LIFE' : ''}`.trim(); }
   updateWarnings();
   shownScore += (run.score - shownScore) * 0.3;
   $('hScore').textContent = fmt(Math.round(shownScore));
@@ -2006,7 +2092,7 @@ const missionsKey = () => 'm';
 
 // debug / test hooks
 window.__game = {
-  api, cheats, applyCheatVisuals, get duelCtl() { return duelCtl; }, enterArena, startSoloDuelRun, startDuel, showDuelResult, get hub() { return hubUI; }, get dlgOpen() { return dlgOpen; },
+  api, cheats, applyCheatVisuals, get onboarding() { return onboarding; }, setLang, getLang, get duelCtl() { return duelCtl; }, enterArena, startSoloDuelRun, startDuel, showDuelResult, get hub() { return hubUI; }, get dlgOpen() { return dlgOpen; },
   get state() { return state; },
   P, run, pw, G,
   get world() { return world; },

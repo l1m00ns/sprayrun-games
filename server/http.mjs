@@ -31,4 +31,4 @@ export function authPlayer(req) {
   return p;
 }
 
-export const clientIp = (req) => (process.env.TRUST_PROXY ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : '') || req.socket.remoteAddress || '?';
+export const clientIp = (req) => (process.env.TEST_TRUST_IP_HEADER && req.headers['x-test-ip'] ? String(req.headers['x-test-ip']) : (process.env.TRUST_PROXY ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : '') || req.socket.remoteAddress || '?');

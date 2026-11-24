@@ -7,6 +7,7 @@ import { A, SPAWNS, newBody, validateMove, hitscan, damageFor, eyeOf } from '../
 import { q } from './db.mjs';
 import { strike, kick, recordEvent } from './players.mjs';
 import { bumpCareer, addXp } from './economy.mjs';
+import { nowMs } from './catalog.mjs';
 
 const COUNTDOWN_MS = 3000;
 const LAG_COMP_MS = 110;
@@ -138,15 +139,30 @@ export function endDuel(room, winnerId, reason, io) {
   const stat = (p) => ({ id: p.id, name: p.name, hp: p.hp, shots: p.shots, hits: p.hits, head: p.head, dmg: Math.round(p.dmg), kills: p.kills });
   io.broadcast(room, { t: 'dend', winner: winnerId, reason, players: ps.map(stat) }, null);
   const [a, b] = ps;
+  let first = false;
   try { q.addDuel.run(now(), a && a.pid, b && b.pid, (ps.find((p) => p.id === winnerId) || {}).pid || null, reason, a ? a.hp : 0, b ? b.hp : 0, a ? a.hits : 0, b ? b.hits : 0); } catch { /* history is best effort */ }
   if (reason !== 'forfeit_cheat' || true) {
     for (const p of ps) {
       if (!p.pid) continue;
       const won = p.id === winnerId, lost = winnerId !== null && !won, cheated = reason === 'forfeit_cheat' && lost;
       if (cheated) continue; // no stats / xp for the cheater
-      bumpCareer(p.pid, (c) => { if (won) c.duelWins++; else if (lost) c.duelLosses++; else c.duelDraws++; c.duelKills += p.kills; });
+      bumpCareer(p.pid, (c) => { if (won) { c.duelWins++; c.badges ||= []; if (!c.badges.includes('gold_eagle')) { c.badges.push('gold_eagle'); first = true; } } else if (lost) c.duelLosses++; else c.duelDraws++; c.duelKills += p.kills; });
       addXp(p.pid, won ? 90 : winnerId === null ? 45 : 30);
     }
+  }
+  if (process.env.DEBUG_DUEL) console.log('[duel] end', reason, 'resumable', room.raceResumable, 'first', first, 'winner', winnerId);
+  // The race goes on (Gold Rush happens INSIDE a game). First win ever = profile badge; any later win = 8 s speed boost +
+  // a second life, with coin collection switched off for those 8 s. Forfeits end the match instead.
+  if (room.raceResumable && (reason === 'kill' || reason === 'timeout')) {
+    const t = now();
+    const boost = winnerId && !first ? { sec: 8, speed: 1.25, noCoinsSec: 8, secondLife: true } : null;
+    room.duelCount = (room.duelCount || 0) + 1;
+    room.state = 'running'; room.duel = null; room.warping = false; room.overAt = 0;
+    room.warpAt = t + (Number(process.env.DUEL_REWARP_MS) || 45000 + Math.random() * 45000); // the next warp happens at another random moment
+    for (const p of room.players.values()) { if (p.ac) { p.ac.lastT = t; } }
+    if (winnerId) { const w = room.players.get(winnerId); if (w && boost) { w.alive = true; w.dq = false; } }
+    io.broadcast(room, { t: 'resume', winner: winnerId, reason, first: !!(winnerId && first), boost }, null);
+    if (io.afterResume) io.afterResume(room);
   }
   // soft statistical signal: near-perfect accuracy with mostly headshots over a meaningful sample
   for (const p of ps) {

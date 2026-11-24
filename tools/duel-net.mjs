@@ -11,7 +11,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const PORT = 8794;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-duel-'));
 const server = spawn(process.execPath, [path.join(root, 'server.mjs'), '--prod'], {
-  env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, AI_DISABLED: '1', DUEL_WARP_MS: '1200', DUEL_SECONDS: '7' }, stdio: ['ignore', 'pipe', 'pipe'],
+  env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, AI_DISABLED: '1', DUEL_WARP_MS: '1200', DUEL_SECONDS: '7', DUEL_REWARP_MS: '1500' }, stdio: ['ignore', 'pipe', 'pipe'],
 });
 let log = '';
 server.stdout.on('data', (d) => { log += d; }); server.stderr.on('data', (d) => { log += d; });
@@ -87,6 +87,19 @@ try {
   const winnerTok = shooter === ca ? A.token : B.token, loserTok = shooter === ca ? B.token : A.token;
   await sleep(200);
   ok('career updated: duel win, kills, xp', (await api('GET', '/api/career', null, winnerTok)).json.career.duelWins === 1 && (await api('GET', '/api/career', null, loserTok)).json.career.duelLosses === 1);
+  // the race resumes: first win ever = profile badge (no boost)
+  const rs1 = await shooter.wait('resume', 3000);
+  ok('after the duel the race RESUMES; first win ever = badge, no boost', rs1.winner === shooter.id && rs1.first === true && rs1.boost === null, JSON.stringify(rs1));
+  ok('winner profile now carries the Gold Eagle badge', (await api('GET', '/api/career', null, winnerTok)).json.badges.some((b) => b.id === 'gold_eagle'));
+  // a second Gold Rush happens later in the same game (random moment); this time the win is a boost + second life
+  const live2 = await shooter.wait('duel', 12000, (x) => x.phase === 'live' && x !== m1.live);
+  await victim.wait('duel', 3000, (x) => x.phase === 'live' && x !== m1.live);
+  ok('a second duel is triggered later in the same game', live2 && live2.endsAt > Date.now() - 1000);
+  await Promise.all([walkTo(shooter, spawnOf(shooter), 3.8, spawnOf(shooter).z, spawnOf(shooter).yaw), walkTo(victim, spawnOf(victim), 3.8, spawnOf(victim).z, spawnOf(victim).yaw)]);
+  await sleep(300); // let the opponent's last positions settle (the server rewinds targets by ~110 ms)
+  for (let i = 0; i < 2; i++) { shooter.send({ t: 'df', ox: 3.8, oy: 1.62, oz, dx: 0, dy: 0, dz }); await sleep(420); }
+  const rs2 = await shooter.wait('resume', 4000, (x) => x !== rs1);
+  ok('later win = 8 s speed boost + second life + coins off 8 s', rs2.winner === shooter.id && rs2.first === false && rs2.boost && rs2.boost.sec === 8 && rs2.boost.secondLife === true && rs2.boost.noCoinsSec === 8, JSON.stringify(rs2.boost));
   ca.ws.close(); cb.ws.close();
 
   // ------------------------------------------------------------- match 2: wall hack is detected and kicked

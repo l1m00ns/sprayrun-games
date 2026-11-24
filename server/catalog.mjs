@@ -138,7 +138,10 @@ export const ACHIEVEMENTS = [
   { id: 'advent_25', name: 'Christmas Spirit', desc: 'Open all 25 advent doors.', reward: 1500, test: (c) => (c.advent || 0) >= 25 },
 ];
 
-export const newCareer = () => ({ runs: 0, dist: 0, coins: 0, time: 0, bestScore: 0, bestNoCoin: 0, bestDist: 0, dailyRuns: 0, rankedGames: 0, rankedWins: 0, duelWins: 0, duelLosses: 0, duelDraws: 0, duelKills: 0, advent: 0, ach: [], maps: {} });
+// Ranked needs real play time first (anti smurf / throwaway accounts). RANKED_MIN_MINUTES, default 15.
+export const rankedMinSeconds = () => Math.max(0, Number(process.env.RANKED_MIN_MINUTES ?? 15)) * 60;
+export const BADGES = { gold_eagle: { name: 'Gold Eagle', desc: 'Won your first Gold Rush duel.' } };
+export const newCareer = () => ({ badges: [], runs: 0, dist: 0, coins: 0, time: 0, bestScore: 0, bestNoCoin: 0, bestDist: 0, dailyRuns: 0, rankedGames: 0, rankedWins: 0, duelWins: 0, duelLosses: 0, duelDraws: 0, duelKills: 0, advent: 0, ach: [], maps: {} });
 
 // Daily run: same track for everybody, derived from the UTC date.
 export const DAILY_MAPS = ['city', 'snow', 'tropic', 'desert', 'neon'];

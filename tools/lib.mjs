@@ -37,8 +37,8 @@ export async function openGame(browser, url, { quality = 'low', logs = [], setti
   page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) logs.push(`[${m.type()}] ${m.text()}`); });
   page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
   await page.evaluateOnNewDocument((s) => {
-    try { localStorage.setItem('sprayrun.save.v1', JSON.stringify({ settings: s })); } catch (e) { /* noop */ }
-  }, { quality, weather: quality !== 'low', music: 0, sfx: 0, ...settings });
+    try { localStorage.setItem('sprayrun.save.v1', JSON.stringify({ settings: s, onboarded: true })); } catch (e) { /* noop */ }
+  }, { quality, weather: quality !== 'low', music: 0, sfx: 0, lang: 'en', ...settings });
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__game && window.__game.state === 'menu', { timeout: 180000 });
   return page;

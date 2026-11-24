@@ -22,6 +22,7 @@ export default function GameUI() {
             <div className="pill tb-coins"><span className="coin-i"></span><span id="mCoins">0</span></div>
             <button className="tb-level" id="tbLevel" title="Career"><b id="tbLv">LV 1</b><span className="tb-xp"><i id="tbXp"></i></span></button>
             <button className="tb-acct" id="tbAcct"><span className="tb-avatar" id="tbAvatar">?</span><b id="tbName">Sign in</b></button>
+            <button className="btn round sm" id="tbLang" title="Language"><b id="tbLangCode">EN</b></button>
             <button className="btn round sm" id="btnSettings" title="Settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.4a.5.5 0 0 0-.6-.2l-2.5 1a7.4 7.4 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.4a.5.5 0 0 0 .1.6L4.6 11a7.7 7.7 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.4c.1.2.4.3.6.2l2.5-1c.5.4 1.1.7 1.7 1l.4 2.6c0 .2.2.4.5.4h4c.3 0 .5-.2.5-.4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1c.2.1.5 0 .6-.2l2-3.4a.5.5 0 0 0-.1-.6zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg></button>
           </div>
         </div>
@@ -66,6 +67,8 @@ export default function GameUI() {
           <div id="h-toast" className=" ink"></div>
           <div id="h-tut" className=" ink"></div>
           <div id="h-cheat" className="hidden"></div>
+          <div id="h-boost" className="hidden"></div>
+          <div id="drBanner" className="hidden"><b id="drbT"></b><small id="drbS"></small></div>
         </div>
 
         <div id="pause" className="screen modal hidden"><div className="panel"><h2 className="ink">PAUSED</h2>
@@ -89,6 +92,7 @@ export default function GameUI() {
           <div id="tabPlay">
             <div className="lob-row me"><b id="pfName">Offline</b><span className="tag" id="pfTier">-</span><span id="pfRating" style={{ marginLeft: 'auto', fontFamily: 'var(--font)', color: 'var(--yellow)' }}>-</span><button className="btn sm" id="btnRename">EDIT</button></div>
             <div id="lobConnect">
+              <div className="stage-note" id="rankedNote"></div>
               <div className="stage-note">Ranked pairs you with runners of your level. Same track for everyone &mdash; best score wins.</div>
               <input className="txt" id="lobName" maxLength={14} placeholder="Your name" style={{ margin: '6px 0' }} />
               <input className="txt" id="lobCode" maxLength={4} placeholder="Room code (optional)" style={{ margin: '6px 0', textTransform: 'uppercase' }} />
@@ -157,6 +161,8 @@ export default function GameUI() {
         </div>
         <div id="warp"><i></i><b>GOLD RUSH</b></div>
         <div id="duelres" className="screen modal hidden"><div className="panel"><h2 className="ink" id="drTitle">VICTORY</h2><div className="stage-note" id="drSub"></div><div id="drStats"></div><div className="row"><button className="btn go" id="drAgain">PLAY AGAIN</button><button className="btn" id="drHome">HOME</button></div></div></div>
+        <div id="langModal" className="screen modal hidden"><div className="panel" style={{ width: 'min(92vw,460px)' }}><h2 className="ink">LANGUAGE</h2><div className="obcards big" id="langList"></div><div className="row"><button className="btn" id="langClose">CLOSE</button></div></div></div>
+        <div id="onboard" className="screen modal hidden"><div className="panel" style={{ width: 'min(94vw,720px)' }}><div id="obDots"></div><div id="obBody"></div><div className="row"><button className="btn" id="obBack">BACK</button><button className="btn go" id="obNext">CONTINUE</button></div></div></div>
         <div id="fpsMeter" className="hidden"></div>
         <div id="dbgPanel" className="hidden"></div>
         <div id="fade" className="fade"></div>

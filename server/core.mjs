@@ -4,13 +4,15 @@ import { db, q } from './db.mjs';
 import { sign, verify, nonce, uuid } from './auth.mjs';
 import { validateRun, checkLive, classify, maxDistAt, maxScore } from './anticheat.mjs';
 import { reply, readJson, authPlayer, clientIp } from './http.mjs';
-import { profile, tierOf as tierOfRating, strike as strikeP, accessProblem, trackSocket, untrackSocket, recordEvent, kick } from './players.mjs';
+import { profile, careerOf, tierOf as tierOfRating, strike as strikeP, accessProblem, trackSocket, untrackSocket, recordEvent, kick } from './players.mjs';
 import { routeV2 } from './routes.mjs';
 import { applyRun, bumpCareer, addXp } from './economy.mjs';
 import { issueToken, cleanName as cleanNameAcc } from './accounts.mjs';
 import { judge } from './ai.mjs';
 import * as duelMod from './duel.mjs';
-import { nowMs, dayKey, dailyInfo } from './catalog.mjs';
+import * as ipintel from './ipintel.mjs';
+import { collusionSet } from './devices.mjs';
+import { nowMs, dayKey, dailyInfo, rankedMinSeconds } from './catalog.mjs';
 
 const MAPS = ['city', 'snow', 'tropic', 'desert', 'neon'];
 const ROOM_MAPS = new Set([...MAPS, 'tour']);
@@ -37,6 +39,9 @@ function limited(ip) {
 }
 setInterval(() => { const t = now(); for (const [k, b] of buckets) if (t - b.t > 120000) buckets.delete(k); q.purgeTickets.run(t - 6 * 3600 * 1000); }, 60000).unref();
 
+// Online access is refused to VPN / proxy / Tor / datacenter connections (see ipintel.mjs).
+const VPN_GATED = new Set(['POST /api/auth/guest', 'POST /api/auth/register', 'POST /api/auth/login', 'POST /api/run/start', 'POST /api/run/finish']);
+
 // Returns true when the request was handled.
 export async function handleApi(req, res) {
   const url = new URL(req.url, 'http://x');
@@ -47,6 +52,11 @@ export async function handleApi(req, res) {
   try {
     const route = `${req.method} ${url.pathname}`;
     if (route === 'GET /api/health') { reply(res, 200, { ok: true, time: now(), online: wss ? wss.clients.size : 0 }); return true; }
+
+    if (VPN_GATED.has(route)) {
+      const v = await ipintel.check(ip);
+      if (v.block) { reply(res, 403, ipintel.blockedReply(v)); return true; }
+    }
 
     if (route === 'POST /api/auth/guest') {
       const body = await readJson(req);
@@ -185,7 +195,7 @@ function snapshot(room) {
 }
 const pushRoom = (room) => broadcast(room, snapshot(room));
 // what the duel module needs from this file
-const dio = { send, broadcast: (room, obj, except) => broadcast(room, obj, except || undefined), onSoftFlag: (p, st) => reviewDuelAim(p.pid, st) };
+const dio = { send, broadcast: (room, obj, except) => broadcast(room, obj, except || undefined), onSoftFlag: (p, st) => reviewDuelAim(p.pid, st), afterResume: (room) => checkFinish(room) };
 function reviewDuelAim(pid, st) {
   const p = q.getPlayer.get(pid);
   if (!p) return;
@@ -235,6 +245,11 @@ function leaveAll(ws) {
 
 function checkFinish(room) {
   if (room.state !== 'running') return;
+  // Gold Rush guarantee: the duel happens at least once per game. If somebody crashed before the first warp, warp NOW.
+  if (room.ltm && !room.duelCount && !room.duel && !room.warping) {
+    const conn = [...room.players.values()].filter((p) => p.ws.readyState === 1);
+    if (conn.length === 2 && conn.some((p) => !p.alive)) { room.warpAt = Math.min(room.warpAt || Infinity, now() + 300); return; }
+  }
   const alive = [...room.players.values()].filter((p) => p.alive);
   if (alive.length === 0 || now() - room.startedAt > 8 * 60 * 1000) finish(room);
 }
@@ -282,8 +297,12 @@ function dequeue(ws) {
 }
 function enqueue(ws, mode) {
   if (!ws.player || ws.player.banned) { send(ws, { t: 'err', msg: ws.player ? 'Ranked is disabled for this account' : 'Sign in first' }); return; }
+  if (mode !== 'duel') { // ranked ladders: a minimum amount of real playing time first
+    const have = careerOf(q.getPlayer.get(ws.player.id)).time, need = rankedMinSeconds();
+    if (have < need) { send(ws, { t: 'err', code: 'ranked_locked', msg: `Ranked unlocks after ${Math.max(1, Math.ceil(need / 60))} minutes of play (${Math.max(1, Math.ceil((need - have) / 60))} min to go).`, need, have: Math.floor(have) }); return; }
+  }
   leaveAll(ws);
-  queues[mode].push({ ws, joined: now(), rating: ws.player.rating, mode });
+  queues[mode].push({ ws, joined: now(), rating: ws.player.rating, mode, pid: ws.player.id, links: collusionSet(ws.player.id) });
   send(ws, { t: 'queued', mode, rating: Math.round(ws.player.rating), tier: tierOf(ws.player.rating) });
 }
 function matchTick() {
@@ -298,6 +317,7 @@ function matchTick() {
       const full = mode === 'duel' ? 2 : 4;
       for (const b of list) {
         if (b === a || used.has(b) || group.length >= full) continue;
+        if (group.some((g) => g.links.has(b.pid) || b.links.has(g.pid))) continue; // same person / device: never in the same ranked match
         const w = Math.min(searchWindow(a, t), searchWindow(b, t));
         if (mode === 'duel' || group.every((g) => Math.abs(g.rating - b.rating) <= Math.min(w, searchWindow(g, t)))) group.push(b);
       }
@@ -343,7 +363,9 @@ export function attachWs(server) {
   setInterval(ltmTick, 50).unref();
   setInterval(() => { for (const ws of wss.clients) { if (!ws.isAlive) { ws.terminate(); continue; } ws.isAlive = false; ws.ping(); } for (const r of rooms.values()) checkFinish(r); }, 15000).unref();
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    ws.ip = clientIp(req);
+    ipintel.check(ws.ip).then((v) => { ws.vpn = v; if (v.block) { send(ws, { t: 'err', code: 'vpn_blocked', msg: ipintel.blockedReply(v).message }); setTimeout(() => { try { ws.close(4003, 'vpn'); } catch { /* closed */ } }, 400); } }).catch(() => {});
     ws.id = nextId++; ws.room = null; ws.player = null; ws.isAlive = true; ws.rate = { n: 0, t: now() };
     send(ws, { t: 'hello', id: ws.id });
     ws.on('pong', () => { ws.isAlive = true; });
@@ -367,12 +389,13 @@ function ltmTick() {
   for (const room of rooms.values()) {
     if (room.ltm !== 'goldrush') continue;
     if (room.state === 'running' && !room.duel && !room.warping && room.warpAt && t >= room.warpAt) {
-      const alive = [...room.players.values()].filter((p) => p.alive && p.ws.readyState === 1);
-      if (alive.length === 2) {
-        room.warping = true;
+      const conn = [...room.players.values()].filter((p) => p.ws.readyState === 1);
+      const guaranteed = !room.duelCount; // the first one happens even if somebody already crashed
+      if (conn.length === 2 && (guaranteed || conn.every((p) => p.alive))) {
+        room.warping = true; room.raceResumable = true;
         broadcast(room, { t: 'warp', in: 2.5 });
         setTimeout(() => { room.warping = false; if (room.state === 'running' && !room.duel) duelMod.startDuel(room, dio); }, 2500).unref();
-      } else room.warpAt = 0; // somebody already crashed: no duel in this match
+      } else room.warpAt = conn.length < 2 ? 0 : t + 20000; // try again a little later
     }
     if (room.duel) {
       duelMod.tickDuel(room, t, dio);
@@ -383,6 +406,7 @@ function ltmTick() {
 
 function onMessage(ws, msg, t) {
   if (msg.t === 'ping') { send(ws, { t: 'pong', c: clamp(msg.c, 0, 1e15), s: t }); return; }
+  if (ws.vpn && ws.vpn.block) return; // blocked network: nothing else is processed
   if (msg.t === 'auth') {
     const tok = verify(msg.token);
     const p = tok && q.getPlayer.get(tok.pid);

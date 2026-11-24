@@ -1,7 +1,8 @@
 // Client for the Reverse Surfers backend (REST). Every call fails soft: the game stays fully playable offline.
 import { save, persist } from './save.js';
+import { collect, deviceId } from './device.js';
 
-export const online = { token: null, player: null, ticket: null, submitted: false, ping: null, wallet: 0, inv: null, events: null, serverOffset: 0, sanction: null };
+export const online = { vpn: null, token: null, player: null, ticket: null, submitted: false, ping: null, wallet: 0, inv: null, events: null, serverOffset: 0, sanction: null };
 
 // Same origin by default (npm start). `npm run dev:all` runs the backend on its own port and sets NEXT_PUBLIC_BACKEND.
 const BACKEND = (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_BACKEND) || '';
@@ -19,6 +20,7 @@ export async function call(method, path, body, auth = true, timeout = 6000) {
     });
     const json = await r.json().catch(() => ({}));
     if (r.status === 403 && (json.error === 'banned' || json.error === 'kicked')) online.sanction = json; // surfaced by the UI as a native dialog
+    if (r.status === 403 && json.error === 'vpn_blocked') online.vpn = json; else if (r.ok && online.vpn) online.vpn = null;
     return { status: r.status, json };
   } catch (e) { return null; } finally { clearTimeout(to); }
 }
@@ -60,7 +62,7 @@ export async function finishRun(payload) {
 
 // ---- accounts + cloud save
 function adoptAuth(r) { if (r && r.status === 200 && r.json.token) { online.token = r.json.token; online.player = r.json.player; adopt(r.json); save.account = { token: online.token }; persist(); } return r; }
-export const register = async (username, password, name) => adoptAuth(await call('POST', '/api/auth/register', { username, password, name, local: { coins: save.coins, boards: save.boards, upgrades: save.upgrades, unlocked: save.unlocked } }));
+export const register = async (username, password, name) => adoptAuth(await call('POST', '/api/auth/register', { did: deviceId(), username, password, name, local: { coins: save.coins, boards: save.boards, upgrades: save.upgrades, unlocked: save.unlocked } }));
 export const login = async (username, password) => adoptAuth(await call('POST', '/api/auth/login', { username, password }, false));
 export async function logout() { online.token = null; online.player = null; online.wallet = 0; online.inv = null; save.account = null; persist(); }
 export const changePassword = async (old, nw) => { const r = await call('POST', '/api/auth/password', { old, new: nw }); if (r && r.status === 200) { online.token = r.json.token; save.account = { token: online.token }; persist(); } return r; };
@@ -86,3 +88,17 @@ export const supportOpen = (subject, message, category) => call('POST', '/api/su
 export const supportSend = (id, text) => call('POST', `/api/support/tickets/${id}/messages`, { text }, true, 70000);
 export const supportClose = (id) => call('POST', `/api/support/tickets/${id}/close`);
 export const supportEscalate = (id) => call('POST', `/api/support/tickets/${id}/escalate`);
+
+// ---- fair play: device report, appeals, statistics
+let lastDevice = 0;
+export async function reportDevice(force = false) {
+  if (!online.token || (!force && Date.now() - lastDevice < 6 * 3600e3)) return null;
+  lastDevice = Date.now();
+  const d = await collect();
+  const r = await call('POST', '/api/device', d, true, 15000);
+  return r && r.json;
+}
+export const appeals = async () => { const r = await call('GET', '/api/appeals'); return r && r.status === 200 ? r.json : null; };
+export const appealDetail = async (id) => { const r = await call('GET', '/api/appeals/' + id); return r && r.status === 200 ? r.json : null; };
+export const fileAppeal = (type, message) => call('POST', '/api/appeals', { type, message }, true, 15000);
+export const stats = async () => { const r = await call('GET', '/api/stats'); return r && r.status === 200 ? r.json : null; };

@@ -41,3 +41,6 @@ export function checkPassword(password, hash, salt) {
   const a = Buffer.from(hashPassword(password, salt).hash), b = Buffer.from(hash);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+
+// Keyed hash for identifiers we compare but never want to store in clear (IP addresses, device ids).
+export const hashId = (v) => crypto.createHmac('sha256', KEY).update('id:' + String(v)).digest('base64url').slice(0, 24);

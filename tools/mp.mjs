@@ -7,7 +7,7 @@ import path from 'node:path';
 const out = process.argv[2];
 const PORT = 8791;
 const root = path.resolve(import.meta.dirname, '..');
-const server = spawn(process.execPath, [path.join(root, 'server.mjs'), '--prod'], { env: { ...process.env, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn(process.execPath, [path.join(root, 'server.mjs'), '--prod'], { env: { ...process.env, PORT: String(PORT), DATA_DIR: path.join((await import('node:os')).tmpdir(), 'sr-mp-' + Date.now()), AI_DISABLED: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let srvLog = '';
 server.stdout.on('data', (d) => { srvLog += d; });
 server.stderr.on('data', (d) => { srvLog += d; });
@@ -25,9 +25,9 @@ const open = async (tag) => {
   const page = await ctx.newPage();
   page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) logs.push(`[${tag} ${m.type()}] ${m.text()}`); });
   page.on('pageerror', (e) => logs.push(`[${tag} pageerror] ${e.message}`));
+  await page.evaluateOnNewDocument(() => { try { localStorage.setItem('sprayrun.save.v1', JSON.stringify({ settings: { quality: 'low', weather: false, music: 0, sfx: 0, lang: 'en' }, onboarded: true })); } catch (e) { /* noop */ } });
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__game && window.__game.state === 'menu', { timeout: 90000 });
-  await page.evaluate(() => { const q = document.getElementById('setQuality'); q.value = 'low'; q.dispatchEvent(new Event('change')); });
   return page;
 };
 const A = await open('A');
@@ -71,12 +71,12 @@ ok('ghost spawned for B', seen.ghosts === 1);
 await A.screenshot({ path: path.join(out, 'mp_race_A.png') });
 
 // B dies deliberately -> A should see it, then A dies -> results
-await B.evaluate(() => { const g = window.__game; g.setBot(false); g.P.inv = 0; g.run.speed = 40; });
+await B.evaluate(() => { const g = window.__game; g.setBot(false); g.die('crash'); }); // deliberate crash (software GL is too slow for the runner to reach an obstacle in time)
 await B.waitForFunction(() => window.__game.state === 'over' || window.__game.state === 'dying', { timeout: 60000 }).catch(() => {});
 await new Promise((r) => setTimeout(r, 2500));
 const bOut = await A.evaluate(() => [...window.__game.mp.players.values()].filter((p) => p.id !== window.__game.net.id).map((p) => p.alive));
 console.log('B alive flag seen by A:', JSON.stringify(bOut));
-await A.evaluate(() => { const g = window.__game; g.setBot(false); g.run.speed = 40; });
+await A.evaluate(() => { const g = window.__game; g.setBot(false); g.die('crash'); });
 await Promise.all([A, B].map((p) => p.waitForFunction(() => document.getElementById('mpTitle').textContent !== 'RACE OVER' && !document.getElementById('mpres').classList.contains('hidden') && window.__game.mp.results, { timeout: 90000 }).catch(() => null)));
 const res = await A.evaluate(() => ({ title: document.getElementById('mpTitle').textContent, rows: document.getElementById('mpRank').children.length, results: !!window.__game.mp.results }));
 ok('results screen after everyone is out', res.results && res.rows === 2, JSON.stringify(res));

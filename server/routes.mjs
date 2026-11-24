@@ -8,14 +8,49 @@ import { eventStatus, ltmStatus, nowMs, ACHIEVEMENTS, levelOf, titleOf, COSMETIC
 import { UPDATES } from './updates.mjs';
 import { aiStatus } from './ai.mjs';
 import * as support from './support.mjs';
+import * as appeals from './appeals.mjs';
+import * as devices from './devices.mjs';
+import * as ipintel from './ipintel.mjs';
+import { playerStats, globalStats } from './stats.mjs';
+import { rankedMinSeconds, BADGES } from './catalog.mjs';
 
-const full = (p) => ({ player: profile(p), ...stateOf(p) });
+const full = (p) => ({ player: profile(p), ...stateOf(p), appeals: { open: !!appeals.list(p.id).appeals.find((a) => a.status !== 'decided'), left: appeals.list(p.id).left } });
 
 // Returns true when the request was handled here.
 export async function routeV2(req, res, url, me, route) {
+  // ---------------------------------------------------------------- device fingerprint + network check
+  if (route === 'POST /api/device') {
+    if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }
+    const body = await readJson(req, 4096);
+    const intel = await ipintel.check(clientIp(req), { tz: body && body.signals && body.signals.tz });
+    const r = devices.recordDevice(me.id, body, intel);
+    if (!r.ok) { reply(res, 400, r); return true; }
+    const a = devices.assess(me.id);
+    reply(res, 200, { ok: true, network: { class: intel.class, blocked: intel.block, brand: intel.brand || null }, restricted: a.restricted });
+    return true;
+  }
+  if (route === 'GET /api/vpn') { const r = await ipintel.check(clientIp(req)); reply(res, 200, { blocked: r.block, class: r.class, brand: r.brand || null, country: r.country || null }); return true; }
+
+  // ------------------------------------------------------------------------------- appeals / stats
+  if (route === 'GET /api/appeals') { if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; } reply(res, 200, { ...appeals.list(me.id), eligibility: appeals.eligibility(me), case: appeals.caseOf(me) }); return true; }
+  if (route === 'POST /api/appeals') {
+    if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }
+    const body = await readJson(req, 3000);
+    const r = appeals.file(me, body);
+    reply(res, r.ok ? 200 : 400, r);
+    return true;
+  }
+  {
+    const am = /^\/api\/appeals\/(\d+)$/.exec(url.pathname);
+    if (am && req.method === 'GET') { if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; } const d = appeals.detail(me.id, am[1]); if (d) reply(res, 200, d); else reply(res, 404, { error: 'not_found' }); return true; }
+  }
+  if (route === 'GET /api/stats') { if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; } reply(res, 200, playerStats(me.id)); return true; }
+  if (route === 'GET /api/stats/global') { reply(res, 200, globalStats(0)); return true; }
+
   // ------------------------------------------------------------------------------------- accounts
   if (route === 'POST /api/auth/register') {
     const body = await readJson(req, 4096);
+    if (body.did && devices.accountsOnDevice(body.did) >= 3 && !(me && me.username)) { reply(res, 403, { error: 'too_many_accounts', message: 'This device already has the maximum number of accounts.' }); return true; }
     const r = register({ guest: me, username: body.username, password: body.password, name: body.name, ip: clientIp(req) });
     if (!r.ok) { reply(res, r.error === 'rate_limited' ? 429 : 400, r); return true; }
     let imported = null;
@@ -145,6 +180,11 @@ export async function routeV2(req, res, url, me, route) {
   if (url.pathname.startsWith('/api/admin/')) {
     if (!support.adminOk(req)) { reply(res, 403, { error: 'forbidden' }); return true; }
     if (route === 'GET /api/admin/ai') { reply(res, 200, aiStatus()); return true; }
+    if (route === 'GET /api/admin/appeals') { reply(res, 200, { appeals: appeals.queue() }); return true; }
+    if (route === 'POST /api/admin/appeals/decide') { const b = await readJson(req, 2000); const r = appeals.humanDecide(b.id, b.decision, b.note); reply(res, r.ok ? 200 : 400, r); return true; }
+    if (route === 'GET /api/admin/links') { const row = q.profileByName.get(String(url.searchParams.get('name') || '')); if (!row) { reply(res, 404, { error: 'not_found' }); return true; } reply(res, 200, { links: devices.links(row.id) }); return true; }
+    if (route === 'GET /api/admin/vpn') { reply(res, 200, ipintel.intelStatus()); return true; }
+    if (route === 'POST /api/admin/vpn/allow') { const b = await readJson(req, 500); ipintel.allowIp(String(b.ip || ''), String(b.note || '')); reply(res, 200, { ok: true }); return true; }
     if (route === 'GET /api/admin/queue') { reply(res, 200, { tickets: support.adminQueue() }); return true; }
     if (route === 'GET /api/admin/player') {
       const row = q.profileByName.get(String(url.searchParams.get('name') || ''));
@@ -156,7 +196,7 @@ export async function routeV2(req, res, url, me, route) {
     const body = req.method === 'POST' ? await readJson(req, 4096) : {};
     if (route === 'POST /api/admin/reply') { reply(res, 200, support.adminReply(body.ticket, body.text, !!body.resolve)); return true; }
     if (route === 'POST /api/admin/unban') { q.unban.run(String(body.pid)); reply(res, 200, { ok: true }); return true; }
-    if (route === 'POST /api/admin/ban') { ban(String(body.pid), String(body.reason || 'Fair-play violation').slice(0, 120)); reply(res, 200, { ok: true }); return true; }
+    if (route === 'POST /api/admin/ban') { ban(String(body.pid), 'Moderator: ' + String(body.reason || 'Fair-play violation').slice(0, 110)); reply(res, 200, { ok: true }); return true; }
     if (route === 'POST /api/admin/kick') { kick(String(body.pid), String(body.reason || 'Removed by a moderator').slice(0, 120), Math.min(86400, Number(body.seconds) || 600)); reply(res, 200, { ok: true }); return true; }
   }
   return false;
@@ -171,7 +211,7 @@ function careerView(p) {
     achievements: ACHIEVEMENTS.map((a) => ({ id: a.id, name: a.name, desc: a.desc, reward: a.reward, done: c.ach.includes(a.id) })),
     recentRuns: q.recentRuns.all(p.id, 12).map((r) => ({ mode: r.mode, map: r.map, score: r.score, dist: r.dist, coins: r.coins, time: r.time, at: r.created, flagged: r.flagged === 1, revived: r.flagged === 2 })),
     matches: q.recentMatches.all(p.id, 12).map((m) => ({ at: m.created, map: m.map, mode: m.mode, score: m.score, place: m.place, players: m.players, before: Math.round(m.before), after: Math.round(m.after), dq: !!m.dq })),
-    equipped: invOf(p).equip,
+    equipped: invOf(p).equip, badges: (c.badges || []).map((id) => ({ id, ...(BADGES[id] || { name: id }) })), ranked: { minSeconds: rankedMinSeconds(), played: Math.floor(c.time) },
   };
 }
 function publicProfile(p) {
@@ -180,7 +220,7 @@ function publicProfile(p) {
   return {
     name: p.name, since: p.created, level: lv.level, title: titleOf(lv.level), rating: Math.round(p.rating), tier: profile(p, false).tier, games: p.games, wins: p.wins,
     stats: { runs: c.runs, dist: c.dist, bestScore: c.bestScore, bestDist: c.bestDist, rankedWins: c.rankedWins, duelWins: c.duelWins, achievements: c.ach.length },
-    equipped: invOf(p).equip,
+    equipped: invOf(p).equip, badges: (c.badges || []).map((id) => ({ id, ...(BADGES[id] || { name: id }) })),
   };
 }
 void accessProblem; void COSMETICS; void RUNNERS;

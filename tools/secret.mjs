@@ -27,7 +27,7 @@ try {
 
   // a clean run is eligible for the server; a run with a gameplay option is a practice run
   await page.evaluate(() => { window.__game.save.tutorialDone = true; window.__game.start(); });
-  await sleep(700);
+  await page.waitForFunction(() => !!window.__game.api.online.ticket, { timeout: 15000 }).catch(() => {}); // the ticket request can be slow on a software GL machine
   const clean = await page.evaluate(() => ({ cheated: window.__game.run.cheated, hasTicket: !!window.__game.api.online.ticket }));
   ok('visual-only session is NOT a practice run (ticket requested)', clean.cheated === false && clean.hasTicket === true, JSON.stringify(clean));
   await page.evaluate(() => window.__game.die('crash'));

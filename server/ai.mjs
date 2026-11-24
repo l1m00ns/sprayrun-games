@@ -20,6 +20,7 @@ import './env.mjs';
 import crypto from 'node:crypto';
 import {
   SUPPORT_SYSTEM, SUPPORT_REVIEW_SYSTEM, JUDGE_SYSTEM, JUDGE_CHALLENGE_SYSTEM, JUDGE_ARBITER_SYSTEM, GAME_FACTS,
+  APPEAL_SYSTEM, APPEAL_CHALLENGE_SYSTEM, APPEAL_ARBITER_SYSTEM,
   checkJudge, checkSupport, checkReview,
 } from './prompts.mjs';
 
@@ -162,7 +163,8 @@ function guard(res, det, unanimousHigh) {
   return r;
 }
 
-export async function judge(ev, { pid } = {}) {
+export async function judge(ev, { pid, onProgress } = {}) {
+  const SYS = ev.kind === 'appeal' ? { base: APPEAL_SYSTEM, challenge: APPEAL_CHALLENGE_SYSTEM, arbiter: APPEAL_ARBITER_SYSTEM } : { base: JUDGE_SYSTEM, challenge: JUDGE_CHALLENGE_SYSTEM, arbiter: JUDGE_ARBITER_SYSTEM };
   const det = ruleJudge(ev);
   const base = (x, extra) => ({ ...x, ...extra });
   if (!(ev.flags || []).length) return base(det, { source: 'rules', rounds: 0, tokens: 0 });          // tier 0a: clean
@@ -178,7 +180,8 @@ export async function judge(ev, { pid } = {}) {
   let tokens = 0, rounds = 1;
   const votes = [];
   const user1 = `<evidence>\n${text}\n</evidence>\nJudge this event.`;
-  let r1 = await pairCall(JUDGE_SYSTEM, user1, user1, checkJudge);
+  let r1 = await pairCall(SYS.base, user1, user1, checkJudge);
+  if (onProgress) onProgress({ round: 1, opinions: r1.length });
   r1.forEach((r) => { tokens += r.tokens; votes.push({ round: 1, model: r.model, v: r.obj.verdict, c: r.obj.confidence, a: r.obj.recommended_action }); });
 
   let final = null, finalVotes = r1;
@@ -189,7 +192,7 @@ export async function judge(ev, { pid } = {}) {
     if (SEV_A[o.obj.recommended_action] >= 3 || o.obj.verdict === 'cheating') {
       rounds = 2;
       const u2 = `<evidence>\n${text}\n</evidence>\n<other_opinion>\n${fmtOpinion(o)}\n</other_opinion>\nRe-analyse and keep or change the verdict.`;
-      const c = await callProvider(o.provider, JUDGE_CHALLENGE_SYSTEM, u2, checkJudge, { avoid: [o.model, `${o.model}:free`] });
+      const c = await callProvider(o.provider, SYS.challenge, u2, checkJudge, { avoid: [o.model, `${o.model}:free`] });
       if (c) { tokens += c.tokens; votes.push({ round: 2, model: c.model, v: c.obj.verdict, c: c.obj.confidence, a: c.obj.recommended_action }); finalVotes = [o, c]; final = agree(o.obj, c.obj) ? merge(finalVotes) : conservative(finalVotes); }
       else final = conservative([o]);
     } else final = o.obj;
@@ -197,12 +200,13 @@ export async function judge(ev, { pid } = {}) {
     final = merge(r1);                                     // round 1 consensus: stop here, 2 calls total
   } else {
     rounds = 2;                                            // round 2: cross-review
+    if (onProgress) onProgress({ round: 2, note: 'reviewers disagree: cross-review' });
     const [a, b] = r1;
     const ua = `<evidence>\n${text}\n</evidence>\n<other_opinion>\n${fmtOpinion(b)}\n</other_opinion>\nRe-analyse and keep or change the verdict.`;
     const ub = `<evidence>\n${text}\n</evidence>\n<other_opinion>\n${fmtOpinion(a)}\n</other_opinion>\nRe-analyse and keep or change the verdict.`;
     const [ca, cb] = await Promise.all([
-      callProvider(a.provider, JUDGE_CHALLENGE_SYSTEM, ua, checkJudge, { avoid: [b.model] }),
-      callProvider(b.provider, JUDGE_CHALLENGE_SYSTEM, ub, checkJudge, { avoid: [a.model] }),
+      callProvider(a.provider, SYS.challenge, ua, checkJudge, { avoid: [b.model] }),
+      callProvider(b.provider, SYS.challenge, ub, checkJudge, { avoid: [a.model] }),
     ]);
     const r2 = [ca, cb].filter(Boolean);
     r2.forEach((r) => { tokens += r.tokens; votes.push({ round: 2, model: r.model, v: r.obj.verdict, c: r.obj.confidence, a: r.obj.recommended_action }); });
@@ -210,9 +214,10 @@ export async function judge(ev, { pid } = {}) {
     if (r2.length === 2 && agree(r2[0].obj, r2[1].obj)) final = merge(r2);
     else {
       rounds = 3;                                          // round 3: arbiter (a third, different model), majority wins
+      if (onProgress) onProgress({ round: 3, note: 'still split: arbiter' });
       const u3 = `<evidence>\n${text}\n</evidence>\n<opinions>\n${finalVotes.map(fmtOpinion).join('\n')}\n</opinions>\nDecide.`;
       const used = finalVotes.map((r) => r.model);
-      const arb = (await callProvider('openrouter', JUDGE_ARBITER_SYSTEM, u3, checkJudge, { avoid: used })) || (await callProvider('tokenharbor', JUDGE_ARBITER_SYSTEM, u3, checkJudge, { avoid: used }));
+      const arb = (await callProvider('openrouter', SYS.arbiter, u3, checkJudge, { avoid: used })) || (await callProvider('tokenharbor', SYS.arbiter, u3, checkJudge, { avoid: used }));
       if (arb && !used.map((u) => u.replace(/:free$/, '')).includes(arb.model)) {
         tokens += arb.tokens; votes.push({ round: 3, model: arb.model, v: arb.obj.verdict, c: arb.obj.confidence, a: arb.obj.recommended_action });
         const all = [...finalVotes, arb];

@@ -1,6 +1,6 @@
 // Shared player helpers (no dependency on the HTTP / WebSocket layers): public profile shape, strikes, kicks, bans.
 import { q } from './db.mjs';
-import { nowMs, levelOf, titleOf, newCareer } from './catalog.mjs';
+import { nowMs, levelOf, titleOf, newCareer, rankedMinSeconds, BADGES } from './catalog.mjs';
 
 const TIERS = [[1900, 'Champion'], [1700, 'Diamond'], [1500, 'Platinum'], [1300, 'Gold'], [1100, 'Silver'], [0, 'Bronze']];
 export const tierOf = (r) => TIERS.find(([min]) => r >= min)[1];
@@ -13,6 +13,8 @@ export function profile(p, withRank = true) {
     id: p.id, name: p.name, username: p.username || null, hasAccount: !!p.username,
     rating: Math.round(p.rating), tier: tierOf(p.rating), games: p.games, wins: p.wins,
     level: lv.level, xp: lv.xp, xpInto: lv.into, xpNeed: lv.need, title: titleOf(lv.level),
+    ranked: { minSeconds: rankedMinSeconds(), played: Math.floor(careerOf(p).time), unlocked: careerOf(p).time >= rankedMinSeconds() },
+    badges: (careerOf(p).badges || []).map((id) => ({ id, ...(BADGES[id] || { name: id }) })),
     banned: !!p.banned, kickedUntil: p.kicked_until > nowMs() ? p.kicked_until : 0, banReason: p.banned ? p.ban_reason || 'Violation of the fair-play policy' : null,
     rank: withRank && p.games > 0 && !p.banned ? q.ratingRank.get(p.rating).n + 1 : null,
   };

@@ -14,6 +14,7 @@ const defaults = () => ({
   stats: { runs: 0, coins: 0, dist: 0, jumps: 0, rolls: 0 },
   settings: { music: 0.55, sfx: 0.9, quality: 'high', map: 'city', weather: true, outline: true, shake: true },
   tutorialDone: false,
+  onboarded: false,
 });
 
 function merge(base, over) {

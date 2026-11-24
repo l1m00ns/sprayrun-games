@@ -94,7 +94,7 @@ export function initHub(ctx) {
   $('tbLevel').onclick = () => { click(); open('career'); };
 
   const head = (title, sub, extra = '') => `<div class="hp-head"><h1>${title}</h1><p>${sub || ''}</p><span class="sp"></span>${extra}</div>`;
-  const needOnline = (what) => `<div class="empty">${what} needs the server.<br>The game is in offline mode right now - your local progress is safe.<br><br><button class="btn sm" id="retry">RECONNECT</button></div>`;
+  const needOnline = (what) => (api.online.vpn ? `<div class="empty">${what} is unavailable: a VPN, proxy or datacenter connection was detected.<br>Turn it off and reconnect. Offline play still works.<br><br><button class="btn sm" id="retry">RECONNECT</button></div>` : `<div class="empty">${what} needs the server.<br>The game is in offline mode right now - your local progress is safe.<br><br><button class="btn sm" id="retry">RECONNECT</button></div>`);
   const bindRetry = (t) => { const r = $('retry'); if (r) r.onclick = async () => { await ctx.reconnect(); open(t); }; };
 
   // ----------------------------------------------------------------------------------- SHOP
@@ -179,6 +179,9 @@ export function initHub(ctx) {
 
   // --------------------------------------------------------------------------------- CAREER
   const MODE_NAMES = { classic: 'Classic', nocoin: 'No Coin' };
+  let careerTab = 'overview';
+  const careerSubtabs = () => `<div class="subtabs">${[['overview', 'Overview'], ['stats', 'Stats']].map(([id, n]) => `<button class="subtab ${careerTab === id ? 'sel' : ''}" data-ct="${id}">${n}</button>`).join('')}</div>`;
+  const bindCareerSub = () => { for (const b of body.querySelectorAll('[data-ct]')) b.onclick = () => { click(); careerTab = b.dataset.ct; open('career'); }; };
   async function pageCareer(my) {
     if (!isOnline()) { body.innerHTML = head('CAREER', '') + needOnline('Your career'); bindRetry('career'); return; }
     const d = await api.career();
@@ -189,12 +192,48 @@ export function initHub(ctx) {
     const rankedRows = d.matches.map((m) => { const dl = m.after - m.before; return `<div class="rowx"><span class="pos num">#${m.place}</span><b>${esc((BIOMES[m.map] || { name: m.map }).name)}</b><span class="dim">${m.players} players</span><span class="sp"></span><span class="num">${fmt(m.score)}</span><span class="${dl >= 0 ? 'up' : 'down'}">${dl >= 0 ? '+' : ''}${dl}</span></div>`; }).join('');
     const runs = d.recentRuns.map((r) => `<div class="rowx"><b>${MODE_NAMES[r.mode] || r.mode}</b><span class="dim">${esc((BIOMES[r.map] || { name: r.map || '' }).name)}</span><span class="sp"></span><span class="num">${fmt(r.score)}</span><span class="dim">${fmt(r.dist)} m</span>${r.flagged ? '<span class="tag2" style="background:#e0344a">REJECTED</span>' : r.revived ? '<span class="tag2">REVIVED</span>' : ''}</div>`).join('');
     const ach = d.achievements.map((a) => `<div class="ach ${a.done ? 'done' : ''}"><span class="ic">${a.done ? '✓' : '★'}</span><div><b>${esc(a.name)}</b><small>${esc(a.desc)}</small></div><span class="rw">+${a.reward}</span></div>`).join('');
-    body.innerHTML = head('CAREER', `${esc(p.name)} - ${esc(d.title)}`, `<button class="btn sm" id="goAcct">${p.hasAccount ? 'ACCOUNT' : 'CREATE ACCOUNT'}</button>`)
+    if (careerTab === 'stats') return pageStats(my, d);
+    body.innerHTML = careerSubtabs() + head('CAREER', `${esc(p.name)} - ${esc(d.title)}`, `<button class="btn sm" id="goAcct">${p.hasAccount ? 'ACCOUNT' : 'CREATE ACCOUNT'}</button>`)
       + `<div class="banner"><div style="min-width:240px"><h2>Level ${lv.level}</h2><p>${fmt(lv.into)} / ${fmt(lv.need)} XP to level ${lv.level + 1}</p><div class="xpbar" style="margin-top:8px;width:min(360px,70vw)"><i style="width:${Math.min(100, (lv.into / lv.need) * 100)}%"></i></div></div><div><h2 style="color:var(--yellow)">${p.tier}</h2><p>${fmt(p.rating)} rating${p.rank ? ` - ranked #${p.rank}` : ''}</p></div><div class="cd"><small>RECORD</small><b>${best(c.bestScore)}</b></div></div>`
       + `<div class="stats4"><div class="stat4"><small>Runs</small><b>${fmt(c.runs)}</b></div><div class="stat4"><small>Distance</small><b>${fmt(c.dist)} m</b></div><div class="stat4"><small>Coins earned</small><b>${fmt(c.coins)}</b></div><div class="stat4"><small>Time played</small><b>${Math.floor(c.time / 3600)}h ${Math.floor(c.time / 60) % 60}m</b></div><div class="stat4"><small>Ranked wins</small><b>${c.rankedWins}/${c.rankedGames}</b></div><div class="stat4"><small>Duel wins</small><b>${c.duelWins}</b></div><div class="stat4"><small>Best No Coin</small><b>${best(c.bestNoCoin)}</b></div><div class="stat4"><small>Best distance</small><b>${best(c.bestDist)} m</b></div></div>`
+      + badgesHtml(d) + rankedProgress(d)
       + `<div class="cols2"><div><h3 class="ink" style="margin:0 0 6px;color:var(--yellow)">Recent runs</h3>${runs || '<div class="empty">No runs yet.</div>'}<h3 class="ink" style="margin:18px 0 6px;color:var(--yellow)">Ranked history</h3>${rankedRows || '<div class="empty">No ranked matches yet.</div>'}</div><div><h3 class="ink" style="margin:0 0 6px;color:var(--yellow)">Achievements ${c.ach.length}/${d.achievements.length}</h3>${ach}</div></div>`;
     $('goAcct').onclick = () => { click(); open('account'); };
+    bindCareerSub();
   }
+  const badgesHtml = (d) => (d.badges && d.badges.length ? `<div class="hp-head" style="margin:0 0 12px"><h3 class="ink" style="margin:0;color:var(--yellow)">BADGES</h3>${d.badges.map((b) => `<span class="badge2" title="${esc(b.desc || '')}"><i>★</i>${esc(b.name)}</span>`).join('')}</div>` : '');
+  const rankedProgress = (d) => { const r = d.ranked || (d.player && d.player.ranked); if (!r) return ''; const min = Math.round(r.minSeconds / 60), have = Math.min(min, Math.floor((r.played || 0) / 60)); return r.played >= r.minSeconds ? '<div class="stage-note">Ranked unlocked</div>' : `<div class="chartbox" style="margin-bottom:14px"><h4>Ranked</h4><div>Ranked unlocks after ${min} min of play - ${have}/${min} min</div><div class="progress"><i style="width:${Math.min(100, (have / Math.max(1, min)) * 100)}%"></i></div></div>`; };
+
+  // ---- statistics (SVG charts, no library)
+  const W = 520, Hh = 130;
+  function barChart(vals, labels, { color = '#29d6ff', unit = '' } = {}) {
+    const max = Math.max(1, ...vals), bw = (W - 20) / vals.length;
+    const bars = vals.map((v, i) => { const h = (v / max) * (Hh - 28); return `<rect x="${10 + i * bw + 1}" y="${Hh - 18 - h}" width="${Math.max(2, bw - 3)}" height="${Math.max(0, h)}" rx="3" fill="${color}" opacity="${v ? 0.95 : 0.18}"><title>${esc(labels[i])}: ${fmt(v)}${unit}</title></rect>`; }).join('');
+    const ticks = [0, Math.floor(vals.length / 2), vals.length - 1].map((i) => `<text x="${10 + i * bw}" y="${Hh - 4}">${esc(labels[i])}</text>`).join('');
+    return `<svg class="chart" viewBox="0 0 ${W} ${Hh}" role="img">${bars}<line x1="10" x2="${W - 10}" y1="${Hh - 18}" y2="${Hh - 18}" stroke="rgba(255,255,255,.25)"/>${ticks}<text x="${W - 10}" y="10" text-anchor="end">max ${fmt(max)}${unit}</text></svg>`;
+  }
+  function lineChart(pts, { color = '#ffd23f' } = {}) {
+    if (pts.length < 2) return `<svg class="chart" viewBox="0 0 ${W} ${Hh}" role="img"><line x1="12" x2="${W - 12}" y1="${Hh - 22}" y2="${Hh - 22}" stroke="rgba(255,255,255,.25)"/><text x="${W / 2}" y="${Hh / 2}" text-anchor="middle">Not enough data yet</text></svg>`;
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), dy = Math.max(1, y1 - y0);
+    const X = (x) => 12 + ((x - x0) / Math.max(1, x1 - x0)) * (W - 24), Y = (y) => Hh - 22 - ((y - y0) / dy) * (Hh - 40);
+    const d = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');
+    return `<svg class="chart" viewBox="0 0 ${W} ${Hh}" role="img"><path d="${d} L${X(x1)},${Hh - 22} L${X(x0)},${Hh - 22} Z" fill="${color}" opacity=".13"/><path d="${d}" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round"/>${pts.map((p) => `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="3.2" fill="${color}"><title>${fmt(p.y)}</title></circle>`).join('')}<text x="12" y="${Hh - 6}">${fmt(y0)}</text><text x="${W - 12}" y="12" text-anchor="end">${fmt(y1)}</text></svg>`;
+  }
+  async function pageStats(my, career) {
+    const st = await api.stats();
+    if (!live(my)) return;
+    if (!st) { body.innerHTML = careerSubtabs() + head('CAREER', '') + needOnline('Statistics'); bindRetry('career'); bindCareerSub(); return; }
+    const T = st.totals, mapNames = Object.keys(st.byMap);
+    const mapRows = mapNames.map((m) => { const x = st.byMap[m]; return `<div class="rowx"><b>${esc((BIOMES[m] || { name: m }).name)}</b><span class="dim">${x.runs} runs</span><span class="sp"></span><span class="dim">avg ${fmt(x.avg)}</span><span class="num">${fmt(x.best)}</span></div>`; }).join('');
+    const modeRows = Object.keys(st.byMode).map((m) => { const x = st.byMode[m]; return `<div class="rowx"><b>${esc(MODE_NAMES[m] || m)}</b><span class="dim">${x.runs} runs - ${x.minutes} min</span><span class="sp"></span><span class="dim">avg ${fmt(x.avg)}</span><span class="num">${fmt(x.best)}</span></div>`; }).join('');
+    body.innerHTML = careerSubtabs() + head('STATS', 'Your last 30 days, in numbers.')
+      + `<div class="stats4"><div class="stat4"><small>Total play time</small><b>${Math.floor(T.minutes / 60)}h ${T.minutes % 60}m</b></div><div class="stat4"><small>Average score</small><b>${fmt(T.avgScore)}</b></div><div class="stat4"><small>Average distance</small><b>${fmt(T.avgDist)} m</b></div><div class="stat4"><small>Average run</small><b>${Math.floor(T.avgRunSec / 60)}:${String(T.avgRunSec % 60).padStart(2, '0')}</b></div><div class="stat4"><small>Active-day streak</small><b>${st.streak}</b></div><div class="stat4"><small>Ranked record</small><b>${st.ranked.wins}/${st.ranked.games}</b></div><div class="stat4"><small>Duels W / L / D</small><b>${st.duel.wins}/${st.duel.losses}/${st.duel.draws}</b></div><div class="stat4"><small>Duel kills</small><b>${st.duel.kills}</b></div></div>`
+      + `<div class="cols2"><div class="chartbox"><h4>Minutes played per day</h4>${barChart(st.days.map((d) => d.minutes), st.days.map((d) => d.d.slice(5)), { color: '#29d6ff', unit: ' min' })}</div><div class="chartbox"><h4>Best score per day</h4>${lineChart(st.days.map((d, i) => ({ x: i, y: d.best })).filter((p) => p.y > 0))}</div></div>`
+      + `<div class="cols2" style="margin-top:14px"><div class="chartbox"><h4>Ranked rating</h4>${lineChart(st.rating.map((r, i) => ({ x: i, y: r.r })), { color: '#42e07a' })}</div><div class="chartbox"><h4>When you play (hour, UTC)</h4>${barChart(st.hours, st.hours.map((_, i) => `${i}h`), { color: '#ff3d7f', unit: ' runs' })}</div></div>`
+      + `<div class="cols2" style="margin-top:14px"><div><h3 class="ink" style="margin:0 0 6px;color:var(--yellow)">By map</h3>${mapRows || '<div class="empty">No runs yet.</div>'}</div><div><h3 class="ink" style="margin:0 0 6px;color:var(--yellow)">By mode</h3>${modeRows || '<div class="empty">No runs yet.</div>'}</div></div>`;
+    bindCareerSub();
+  }
+
 
   // ----------------------------------------------------------------------------- LEADERBOARD
   const BOARDS_L = [['classic', 'Classic'], ['nocoin', 'No Coin'], ['daily', 'Daily'], ['ranked', 'Ranked']];
@@ -216,7 +255,7 @@ export function initHub(ctx) {
       click();
       const pr = await api.profileByName(r.dataset.name);
       if (!pr) return;
-      notify(pr.name.toUpperCase(), `${pr.title} - level ${pr.level}\n${pr.tier} ${fmt(pr.rating)} (${pr.wins} wins / ${pr.games} ranked games)\nBest score ${fmt(pr.stats.bestScore)} - ${fmt(pr.stats.runs)} runs - ${fmt(pr.stats.dist)} m\n${pr.stats.achievements} achievements - ${pr.stats.duelWins} duel wins`);
+      notify(pr.name.toUpperCase(), `${pr.title} - level ${pr.level}\n${pr.tier} ${fmt(pr.rating)} (${pr.wins} wins / ${pr.games} ranked games)\n${(pr.badges || []).length ? 'Badges: ' + pr.badges.map((b) => b.name).join(', ') + '\n' : ''}Best score ${fmt(pr.stats.bestScore)} - ${fmt(pr.stats.runs)} runs - ${fmt(pr.stats.dist)} m\n${pr.stats.achievements} achievements - ${pr.stats.duelWins} duel wins`);
     };
   }
 
@@ -261,7 +300,14 @@ export function initHub(ctx) {
 
   // ------------------------------------------------------------------------------------ SUPPORT
   let openTicket = null;
+  let supView = 'requests', appealView = null;
+  const supSub = () => `<div class="subtabs">${[['requests', 'Requests'], ['appeals', 'Appeals']].map(([id, n]) => `<button class="subtab ${supView === id ? 'sel' : ''}" data-sv="${id}">${n}</button>`).join('')}</div>`;
+  const bindSup = () => { for (const b of body.querySelectorAll('[data-sv]')) b.onclick = () => { click(); supView = b.dataset.sv; appealView = null; openTicket = null; open('support'); }; };
   async function pageSupport(my) {
+    if (supView === 'appeals') return pageAppeals(my);
+    return pageRequests(my);
+  }
+  async function pageRequests(my) {
     if (!isOnline()) { body.innerHTML = head('SUPPORT', '') + needOnline('Support'); bindRetry('support'); return; }
     const tickets = await api.supportTickets();
     if (!live(my)) return;
@@ -272,6 +318,7 @@ export function initHub(ctx) {
     body.innerHTML = head('SUPPORT', 'Questions, bugs, purchases or a fair-play appeal. Surf, the assistant, answers instantly and passes anything that needs a human to the team.', '<button class="btn go" id="newTicket">NEW REQUEST</button>')
       + (sanction ? `<div class="banner" style="border-color:#e0344a"><div><h2>${sanction.error === 'banned' ? 'Your account is suspended' : 'You were removed from online play'}</h2><p>${esc(sanction.reason || 'Fair-play violation')}${sanction.until ? ` Back at ${new Date(sanction.until).toLocaleTimeString()}.` : ''} If you think this is a mistake, open a request and choose "Fair-play appeal".</p></div></div>` : '')
       + (list || '<div class="empty">No requests yet. Ask Surf anything!</div>');
+    body.insertAdjacentHTML('afterbegin', supSub()); bindSup();
     $('newTicket').onclick = () => { click(); newTicketForm(my); };
     for (const r of body.querySelectorAll('.rowx.click')) r.onclick = () => { click(); openTicket = Number(r.dataset.id); open('support'); };
   }
@@ -316,6 +363,56 @@ export function initHub(ctx) {
     $('tkClose').onclick = async () => { click(); await api.supportClose(id); openTicket = null; open('support'); };
   }
 
+  // ------------------------------------------------------------------------------------ APPEALS
+  const STATUS = { reviewing: ['In progress', 'var(--cyan)'], queued: ['Waiting for a moderator', 'var(--yellow)'] };
+  const chip = (a) => { if (a.status === 'decided') return a.decision === 'overturned' ? ['Overturned', 'var(--green)'] : ['Upheld', '#ff8a8a']; return STATUS[a.status] || [a.status, '#fff']; };
+  const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  async function pageAppeals(my) {
+    if (!isOnline()) { body.innerHTML = head('SUPPORT', '') + needOnline('Appeals'); bindRetry('support'); return; }
+    const d = await api.appeals();
+    if (!live(my)) return;
+    if (!d) { body.innerHTML = head('SUPPORT', '') + needOnline('Appeals'); bindRetry('support'); return; }
+    if (typeof appealView === 'number') return appealDetail(my, appealView);
+    if (appealView === 'form') return appealForm(my, d);
+    const c = d.case, sanction = c.banned ? `Your account is suspended${c.banReason ? ': ' + esc(c.banReason) : ''}` : c.kickedUntil ? 'You were removed from online play for a while' : c.strikes > 0 ? `You have ${c.strikes} fair-play strike${c.strikes > 1 ? 's' : ''} on record` : '';
+    const rows = d.appeals.map((a) => { const [t, col] = chip(a); return `<div class="rowx click" data-id="${a.id}"><b>#${a.id}</b><span class="tag2">${a.type === 'ai' ? 'AI Review' : 'Human Review'}</span><span class="sp"></span><span style="color:${col};font-family:var(--font)">${t}</span><span class="dim">${when(a.updated)}</span></div>`; }).join('');
+    body.innerHTML = supSub() + head('APPEALS', 'Contest a kick, a ban or a strike. Maximum 3 appeals per account.', `<div class="pill"><span>${d.used}/${d.limit} used</span></div>`)
+      + (sanction ? `<div class="banner" style="border-color:#e0344a"><div><h2>${sanction}</h2><p>${d.eligibility.ok ? 'If you think this is a mistake, you can contest it. Choose how it is reviewed when you submit.' : esc(d.eligibility.message || '')}</p></div>${d.eligibility.ok ? '<button class="btn go" id="appealNew">CONTEST THIS SANCTION</button>' : ''}</div>` : '<div class="empty">Nothing to contest: your account is in good standing.</div>')
+      + (rows ? `<h3 class="ink" style="margin:14px 0 6px;color:var(--yellow)">Your appeals</h3>${rows}` : '');
+    bindSup();
+    const nb = $('appealNew'); if (nb) nb.onclick = () => { click(); appealView = 'form'; open('support'); };
+    for (const r of body.querySelectorAll('.rowx.click')) r.onclick = () => { click(); appealView = Number(r.dataset.id); open('support'); };
+  }
+  function appealForm(my, d) {
+    let type = 'ai';
+    body.innerHTML = supSub() + head('CONTEST THIS SANCTION', '', '<button class="btn sm" id="back">BACK</button>')
+      + `<div class="formbox" style="max-width:720px;margin-top:0"><label>How should it be reviewed?</label><div class="choice2"><button class="obcard sel" data-type="ai"><b>AI Review</b><small>Takes under 15 minutes. Two independent AI reviewers examine the recorded evidence.</small></button><button class="obcard" data-type="human"><b>Human Review</b><small>Takes 1 to 7 days. A moderator reads your case.</small></button></div><label>Tell us what happened</label><textarea class="txt" id="apMsg" rows="5" maxlength="1000" placeholder="What were you doing? Anything unusual with your connection or device?"></textarea><div class="err" id="apErr"></div><div class="stage-note">${d.left} appeal${d.left === 1 ? '' : 's'} left on this account.</div><div class="row"><button class="btn go" id="apGo">SUBMIT APPEAL</button></div></div>`;
+    bindSup();
+    $('back').onclick = () => { click(); appealView = null; open('support'); };
+    for (const b of body.querySelectorAll('[data-type]')) b.onclick = () => { click(); type = b.dataset.type; for (const x of body.querySelectorAll('[data-type]')) x.classList.toggle('sel', x === b); };
+    $('apGo').onclick = async () => {
+      const msg = $('apMsg').value.trim();
+      if (msg.length < 10) { $('apErr').textContent = 'Please describe what happened (10 characters minimum).'; return; }
+      $('apGo').disabled = true;
+      const r = await api.fileAppeal(type, msg);
+      if (r && r.json && r.json.ok) { appealView = r.json.appeal.id; open('support'); }
+      else { $('apErr').textContent = (r && r.json && (r.json.message || r.json.error)) || 'Could not send. Try again.'; $('apGo').disabled = false; }
+    };
+  }
+  async function appealDetail(my, id) {
+    const a = await api.appealDetail(id);
+    if (!live(my)) return;
+    if (!a) { appealView = null; return open('support'); }
+    const [t, col] = chip(a);
+    body.innerHTML = supSub() + head(`APPEAL #${a.id}`, a.sla, '<button class="btn sm" id="back">ALL APPEALS</button>')
+      + `<div class="banner"><div><h2 style="color:${col}">${t}</h2><p>${a.status === 'reviewing' ? 'Two AI reviewers are on it - this page updates by itself.' : a.status === 'queued' ? 'A moderator will review your case. You can leave this page: you will be notified in game.' : a.decision === 'overturned' ? 'Your access is restored.' : 'The sanction stands. You can contest again if you have appeals left and new elements.'}</p></div><div class="cd"><small>${a.type === 'ai' ? 'AI REVIEW' : 'HUMAN REVIEW'}</small><b>${a.status === 'decided' ? '✓' : '…'}</b></div></div>`
+      + `<div class="chartbox"><h4>Timeline</h4>${a.timeline.map((e) => `<div class="tlrow ${esc(e.kind)}"><div>${esc(e.text)}<small>${when(e.ts)}</small></div></div>`).join('')}</div>`
+      + `<div class="chartbox" style="margin-top:14px"><h4>Your statement</h4><div style="white-space:pre-wrap">${esc(a.message)}</div></div>`;
+    bindSup();
+    $('back').onclick = () => { click(); appealView = null; open('support'); };
+    if (a.status !== 'decided') timers.push(setInterval(async () => { const n = await api.appealDetail(id); if (n && (n.status !== a.status || n.timeline.length !== a.timeline.length)) { clearTimers(); if (live(my)) appealDetail(my, id); } }, a.type === 'ai' ? 2500 : 20000));
+  }
+
   // ------------------------------------------------------------------------------------ ACCOUNT
   async function pageAccount(my) {
     const p = api.online.player;
@@ -350,5 +447,5 @@ export function initHub(ctx) {
     };
   }
 
-  return { open, setBarVisible, refreshChrome, checkUpdates, get tab() { return tab; }, accountForms: () => { open('account'); }, toast: toastBar };
+  return { open, setBarVisible, refreshChrome, checkUpdates, get tab() { return tab; }, accountForms: () => { open('account'); }, toast: toastBar, openAppeals: () => { supView = 'appeals'; appealView = null; setBarVisible(true); open('support'); } };
 }

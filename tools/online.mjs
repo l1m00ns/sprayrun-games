@@ -20,7 +20,7 @@ const logs = [];
 page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) logs.push(`[${m.type()}] ${m.text()}`); });
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
 const ok = (n, c, x = '') => console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${x ? '  ' + x : ''}`);
-await page.evaluateOnNewDocument(() => { try { localStorage.setItem('sprayrun.save.v1', JSON.stringify({ settings: { quality: 'low', weather: false, music: 0, sfx: 0 } })); } catch (e) { /* noop */ } });
+await page.evaluateOnNewDocument(() => { try { localStorage.setItem('sprayrun.save.v1', JSON.stringify({ settings: { quality: 'low', weather: false, music: 0, sfx: 0, lang: 'en' }, onboarded: true })); } catch (e) { /* noop */ } });
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 await page.waitForFunction(() => window.__game && window.__game.state === 'menu', { timeout: 90000 });
 await page.waitForFunction(() => !/Offline/.test(document.getElementById('mOnline').textContent), { timeout: 40000 }).catch(() => {});

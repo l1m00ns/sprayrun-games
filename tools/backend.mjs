@@ -10,7 +10,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const PORT = 8793;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-test-'));
 const server = spawn(process.execPath, [path.join(root, 'server.mjs'), '--prod'], {
-  env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, RANKED_MIN_WAIT_MS: '1200', TEST_NOW: '2026-12-10T12:00:00Z', AI_DISABLED: '1', ADMIN_KEY: 'test-admin' }, stdio: ['ignore', 'pipe', 'pipe'],
+  env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, RANKED_MIN_WAIT_MS: '1200', RANKED_MIN_MINUTES: '0', TEST_NOW: '2026-12-10T12:00:00Z', AI_DISABLED: '1', ADMIN_KEY: 'test-admin' }, stdio: ['ignore', 'pipe', 'pipe'],
 });
 let log = '';
 server.stdout.on('data', (d) => { log += d; }); server.stderr.on('data', (d) => { log += d; });

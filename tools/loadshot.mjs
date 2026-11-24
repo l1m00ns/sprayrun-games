@@ -8,7 +8,7 @@ const srv = await startServer(3400 + Math.floor(Math.random() * 50), { AI_DISABL
 const browser = await launch(1280, 720);
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 720 });
-await page.evaluateOnNewDocument(() => { try { localStorage.setItem('sprayrun.save.v1', JSON.stringify({ settings: { quality: 'low', weather: false, music: 0, sfx: 0 } })); } catch (e) { /* noop */ } });
+await page.evaluateOnNewDocument(() => { try { localStorage.setItem('sprayrun.save.v1', JSON.stringify({ settings: { quality: 'low', weather: false, music: 0, sfx: 0, lang: 'en' }, onboarded: true })); } catch (e) { /* noop */ } });
 await page.goto(srv.url, { waitUntil: 'domcontentloaded' });
 await new Promise((r) => setTimeout(r, 1800));
 await page.screenshot({ path: `${OUT}/loading.png` });
