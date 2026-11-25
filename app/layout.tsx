@@ -12,6 +12,10 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1, maxi
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* runtime override of the backend address (public/config.js), loaded before the game starts */}
+        <script src="/config.js"></script>
+      </head>
       <body>{children}</body>
     </html>
   );

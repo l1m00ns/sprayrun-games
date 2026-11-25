@@ -33,9 +33,9 @@ export const SPEED_START = 110 * S; // 17.7
 export const SPEED_MAX = 220 * S; // 35.4
 export const SPEED_RAMP_TIME = 179;
 // The authentic ramp is linear up to SPEED_MAX at 179 s. It never stops there any more: the speed keeps climbing,
-// smoothly, towards SPEED_CAP (x1.4) - so a long run keeps getting faster instead of plateauing.
-export const SPEED_CAP = SPEED_MAX * 1.4;
-const TAU = 320; // seconds: how quickly the extra speed builds after the linear ramp
+// smoothly, towards SPEED_CAP (x1.6) - so a long run keeps getting faster instead of plateauing.
+export const SPEED_CAP = SPEED_MAX * 1.6;
+const TAU = 240; // seconds: how quickly the extra speed builds after the linear ramp
 export const speedAtTime = (t) => {
   t = Math.max(0, t);
   if (t <= SPEED_RAMP_TIME) return SPEED_START + (SPEED_MAX - SPEED_START) * (t / SPEED_RAMP_TIME);
@@ -62,6 +62,9 @@ export const CARRIAGE_GAP = 0.35;
 export const TRAIN_W = 1.9;
 export const TRAIN_BOTTOM = 0.5;
 export const TRAIN_H = 3.7; // roof must stay above the jump apex (JUMP_H + STEP_TOL) so trains can't be hopped
+// Trains and containers are solid walls: no ramps, nobody stands or runs on a roof. Landing on one (Super Sneakers) is a crash;
+// the Jetpack flies above them. Flip to true to get the old roof-running back (ramps + roof coins).
+export const ROOF_RUN = false;
 
 export const LOW_H = 1.0;
 export const OVERHEAD_BOTTOM = 1.15;

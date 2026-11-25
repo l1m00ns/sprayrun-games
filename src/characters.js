@@ -25,6 +25,17 @@ export const CHARACTERS = [
 
 const GUARD_DEF = { skin: '#e8b48c', top: '#33518f', accent: '#ffd23f', pants: '#26335c', shoes: '#15151c', sole: '#000000', hat: 'police', hatColor: '#2a4378', hair: '#222', bag: null, belly: true };
 
+let _star = null;
+function getStarTex() {
+  if (_star) return _star;
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.translate(32, 33); g.beginPath();
+  for (let i = 0; i < 10; i++) { const r = i % 2 ? 11 : 26, a = (i / 10) * Math.PI * 2 - Math.PI / 2; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+  g.closePath(); g.fillStyle = '#fff'; g.fill(); g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.7)'; g.stroke();
+  _star = new THREE.CanvasTexture(c);
+  return _star;
+}
 let _glow = null;
 function glowTex() { return _glow || (_glow = makeGlowTexture()); }
 
@@ -185,6 +196,56 @@ function buildHat(head, def) {
       const band = new THREE.Mesh(new THREE.CylinderGeometry(0.305, 0.305, 0.08, 20), mat('#ffd23f')); band.position.set(0, 0.36, 0); head.add(band);
       break;
     }
+    case 'santa': {
+      const trim = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.075, 10, 26), mat('#ffffff', { rough: 0.95 }));
+      trim.rotation.x = Math.PI / 2;
+      trim.position.y = 0.1;
+      head.add(trim);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.31, 0.56, 20), hc);
+      cone.position.set(0, 0.4, 0.07);
+      cone.rotation.x = 0.4; // the tip flops backwards
+      head.add(cone);
+      const pom = sph(0.1, mat('#ffffff', { rough: 0.95 }));
+      pom.position.set(0, 0.63, 0.2);
+      head.add(pom);
+      break;
+    }
+    case 'elf': {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.27, 0.62, 18), hc);
+      cone.position.set(0, 0.42, 0.04);
+      cone.rotation.x = 0.28;
+      head.add(cone);
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.04, 8, 24), mat('#ffd23f', { metal: 0.4, rough: 0.4 }));
+      band.rotation.x = Math.PI / 2;
+      band.position.y = 0.09;
+      head.add(band);
+      const bell = sph(0.06, mat('#ffd23f', { metal: 0.6, rough: 0.3 }));
+      bell.position.set(0, 0.7, 0.16);
+      head.add(bell);
+      for (const sx of [-1, 1]) { // pointed ears
+        const ear = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 8), mat(def.skin || '#d9a07a', { rough: 0.55 }));
+        ear.position.set(sx * 0.37, 0.02, 0.0);
+        ear.rotation.z = -sx * 1.15;
+        head.add(ear);
+      }
+      break;
+    }
+    case 'crown': {
+      const gold = mat('#ffd23f', { metal: 0.7, rough: 0.25 });
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, 0.15, 24), hc);
+      band.position.y = 0.2;
+      head.add(band);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.22, 6), hc);
+        spike.position.set(Math.cos(a) * 0.29, 0.38, Math.sin(a) * 0.29);
+        head.add(spike);
+        const gem = sph(0.035, i % 2 ? gold : mat('#ff3d7f', { emissive: 0xff3d7f, ei: 0.5 }));
+        gem.position.set(Math.cos(a) * 0.31, 0.2, Math.sin(a) * 0.31);
+        head.add(gem);
+      }
+      break;
+    }
     case 'police': {
       const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.2, 20), hc);
       crown.position.set(0, 0.27, 0);
@@ -234,6 +295,7 @@ function buildCharacterInner(def, scale) {
   hips.add(pelvis);
 
   const torsoP = pivot(hips, 0, 0.1, 0);
+  const puffer = def.jacket === 'puffer' && !def.belly;
   const torso = rbox(def.belly ? 0.7 : 0.62, 0.62, def.belly ? 0.46 : 0.38, 0.14, top);
   torso.position.y = 0.32;
   torsoP.add(torso);
@@ -245,6 +307,36 @@ function buildCharacterInner(def, scale) {
     const buckle = box(0.1, 0.08, 0.04, mat('#ffd23f', { metal: 0.7, rough: 0.3 }));
     buckle.position.set(0, 0.04, -0.25);
     torsoP.add(buckle);
+  } else if (puffer) {
+    // quilted puffer jacket: three stacked puffs, a high collar, a zip and an elastic hem; the hood hangs bunched at the back
+    for (const [y, w, d] of [[0.14, 0.67, 0.44], [0.34, 0.7, 0.46], [0.53, 0.65, 0.43]]) {
+      const p = rbox(w, 0.21, d, 0.09, top);
+      p.position.y = y;
+      torsoP.add(p);
+    }
+    const zip = box(0.028, 0.6, 0.02, accent);
+    zip.position.set(0, 0.34, -0.245);
+    torsoP.add(zip);
+    const pull = rbox(0.05, 0.08, 0.02, 0.01, mat('#cfd3da', { metal: 0.6 }));
+    pull.position.set(0, 0.56, -0.26);
+    torsoP.add(pull);
+    const hem = rbox(0.68, 0.06, 0.45, 0.025, accent);
+    hem.position.y = 0.03;
+    torsoP.add(hem);
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.075, 10, 22), top);
+    collar.rotation.x = Math.PI / 2;
+    collar.position.set(0, 0.64, 0.0);
+    torsoP.add(collar);
+    const hoodBack = sph(0.22, top);
+    hoodBack.scale.set(1.15, 0.7, 0.8);
+    hoodBack.position.set(0, 0.62, 0.2);
+    torsoP.add(hoodBack);
+    for (const sx of [-1, 1]) { // chest pockets
+      const pk = rbox(0.14, 0.015, 0.02, 0.006, accent);
+      pk.position.set(sx * 0.17, 0.28, -0.235);
+      pk.rotation.z = -sx * 0.25;
+      torsoP.add(pk);
+    }
   } else {
     // chest stripe / pocket
     const stripe = box(0.64, 0.07, 0.4, accent);
@@ -291,17 +383,32 @@ function buildCharacterInner(def, scale) {
     ear.position.set(sx * 0.3, -0.02, 0.01);
     ear.scale.z = 0.6;
     head.add(ear);
-    const eye = sph(0.07, mat('#ffffff', { rough: 0.2 }));
-    eye.position.set(sx * 0.11, 0.03, -0.265);
-    eye.scale.set(1, 1.15, 0.5);
+    const eye = sph(0.078, mat('#ffffff', { rough: 0.2 }));
+    eye.position.set(sx * 0.11, 0.03, -0.262);
+    eye.scale.set(1, 1.18, 0.5);
     head.add(eye);
-    const pupil = sph(0.042, mat('#14161d', { rough: 0.2 }));
-    pupil.position.set(sx * 0.11, 0.025, -0.292);
-    pupil.scale.z = 0.5;
+    const iris = sph(0.056, mat(def.eyes || '#3a2a20', { rough: 0.2 })); // coloured iris, dark pupil on top
+    iris.position.set(sx * 0.108, 0.026, -0.289);
+    iris.scale.set(1, 1.08, 0.45);
+    head.add(iris);
+    const pupil = sph(0.034, mat('#0e1016', { rough: 0.2 }));
+    pupil.position.set(sx * 0.108, 0.026, -0.299);
+    pupil.scale.z = 0.4;
     head.add(pupil);
-    const glint = sph(0.014, basicMat('#ffffff'));
-    glint.position.set(sx * 0.11 + 0.012, 0.045, -0.304);
+    const glint = sph(0.016, basicMat('#ffffff'));
+    glint.position.set(sx * 0.108 + 0.016, 0.05, -0.31);
     head.add(glint);
+    const glint2 = sph(0.008, basicMat('#ffffff'));
+    glint2.position.set(sx * 0.108 - 0.014, 0.004, -0.309);
+    head.add(glint2);
+    const lid = sph(0.082, skin); // upper eyelid: gives the eyes a calm, slightly cool look instead of a stare
+    lid.position.set(sx * 0.11, 0.082, -0.254);
+    lid.scale.set(1, 0.4, 0.5);
+    head.add(lid);
+    const cheek = sph(0.05, mat(new THREE.Color(def.skin).lerp(new THREE.Color('#ff6a6a'), 0.4).getStyle(), { rough: 0.8 }));
+    cheek.position.set(sx * 0.2, -0.075, -0.235);
+    cheek.scale.set(1, 0.62, 0.3);
+    head.add(cheek);
     const brow = box(0.12, 0.028, 0.03, mat(def.hair === '#222' ? '#222' : def.hair, { rough: 0.8 }));
     brow.position.set(sx * 0.11, 0.13, -0.275);
     brow.rotation.z = -sx * (def.belly ? -0.35 : 0.12);
@@ -316,6 +423,20 @@ function buildCharacterInner(def, scale) {
   smile.scale.z = 0.5;
   head.add(smile);
   buildHat(head, def);
+  let stars = null; // dizzy stars: shown after a hard crash
+  if (!GHOST) {
+    stars = new THREE.Group();
+    const starTex = getStarTex();
+    for (let i = 0; i < 3; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTex, color: 0xffe066, depthWrite: false, fog: false }));
+      const a = (i / 3) * Math.PI * 2;
+      sp.position.set(Math.cos(a) * 0.46, 0.62, Math.sin(a) * 0.46); sp.scale.setScalar(0.26);
+      stars.add(sp);
+    }
+    stars.visible = false;
+    fxLayer(stars);
+    head.add(stars);
+  }
 
   // arms
   const arms = {};
@@ -334,6 +455,15 @@ function buildCharacterInner(def, scale) {
     const hand = sph(0.09, skin);
     hand.position.y = -0.3;
     elbow.add(hand);
+    const thumb = cap(0.032, 0.05, skin);
+    thumb.position.set(-sx * 0.07, -0.285, -0.045);
+    thumb.rotation.set(0.5, 0, -sx * 0.5);
+    elbow.add(thumb);
+    if (puffer) { // the sleeve is quilted too: a second puff between shoulder and elbow
+      const puff = cap(0.112, 0.06, top);
+      puff.position.y = -0.3;
+      sh.add(puff);
+    }
     arms[name] = { sh, elbow };
   }
   // legs
@@ -356,6 +486,22 @@ function buildCharacterInner(def, scale) {
     const toe = rbox(0.2, 0.1, 0.12, 0.04, mat('#ffffff', { rough: 0.5 }));
     toe.position.set(0, -0.455, -0.2);
     knee.add(toe);
+    // sneaker details: tongue, three laces, a side stripe in the accent colour, and a cuff where the trousers end
+    const tongue = rbox(0.12, 0.07, 0.04, 0.015, mat('#f4f4f4', { rough: 0.7 }));
+    tongue.position.set(0, -0.345, -0.065);
+    tongue.rotation.x = -0.5;
+    knee.add(tongue);
+    for (let i = 0; i < 3; i++) {
+      const lace = box(0.13, 0.016, 0.03, mat('#ffffff', { rough: 0.8 }));
+      lace.position.set(0, -0.352, -0.2 + i * 0.055);
+      knee.add(lace);
+    }
+    const sideStripe = box(0.228, 0.035, 0.22, accent);
+    sideStripe.position.set(0, -0.455, -0.04);
+    knee.add(sideStripe);
+    const cuffP = new THREE.Mesh(new THREE.CylinderGeometry(0.108, 0.108, 0.045, 14), mat(def.belly ? def.pants : new THREE.Color(def.pants).lerp(new THREE.Color('#ffffff'), 0.18).getStyle(), { rough: 0.9 }));
+    cuffP.position.y = -0.36;
+    knee.add(cuffP);
     legs[name] = { th, knee };
   }
 
@@ -420,7 +566,7 @@ function buildCharacterInner(def, scale) {
     armL: arms.L.sh, foreL: arms.L.elbow, armR: arms.R.sh, foreR: arms.R.elbow,
     legL: legs.L.th, shinL: legs.L.knee, legR: legs.R.th, shinR: legs.R.knee,
   };
-  return { root, rig, jet, board, can, scale, phase: 0, t: 0, state: 'run', roll: 0, def, sneakGlow, flameMats: jet.children.filter((c) => c.name === 'flame') };
+  return { root, rig, jet, board, can, stars, scale, phase: 0, t: 0, state: 'run', roll: 0, def, sneakGlow, flameMats: jet.children.filter((c) => c.name === 'flame') };
 }
 
 // ---------------------------------------------------------------- animation
@@ -487,19 +633,39 @@ export function poseCharacter(ch, st, dt) {
   } else if (stateName === 'stumble') {
     k = 26;
     const w = Math.sin(t * 38) * 0.5;
-    lx = 0.5 + w * 0.4; rlx = -0.3 - w * 0.4; lk = -0.8; rk = -0.5;
-    la = -0.9 + w; ra = -0.9 - w; lf = 0.4; rf = 0.4; laz = -0.9; raz = 0.9;
-    torsoX = 0.34; headX = -0.25; hipsY = 0.88;
-    torsoY = w * 0.2;
+    if (st.kind === 'trip') { // caught the foot on a barrier: pitched forward, legs scrambling, arms windmilling
+      lx = 1.0 + w * 0.6; rlx = -0.2 - w * 0.6; lk = -0.5 - w * 0.3; rk = -1.1 + w * 0.3;
+      la = 2.0 + w; ra = 2.2 - w; laz = -0.5; raz = 0.5; lf = 0.5; rf = 0.5;
+      torsoX = -0.75; headX = 0.35; hipsY = 0.8; torsoY = w * 0.12;
+    } else if (st.kind === 'bonk') { // head into an overhead bar: snaps back, hands fly to the head
+      lx = 0.3; rlx = -0.3; lk = -0.9; rk = -0.7;
+      la = 2.7; ra = 2.6; laz = -0.3; raz = 0.3; lf = 1.4; rf = 1.4;
+      torsoX = 0.5; headX = 0.65; hipsY = 0.82; torsoY = w * 0.1;
+    } else { // side swipe: thrown off balance away from the obstacle, arms flung out
+      const s = st.side || 1;
+      lx = 0.5 + w * 0.5; rlx = -0.3 - w * 0.5; lk = -0.8; rk = -0.5;
+      la = 0.9 + w; ra = 0.9 - w; laz = -1.25; raz = 1.25; lf = 0.3; rf = 0.3;
+      torsoX = -0.1; torsoY = -s * 0.35; torsoZ = s * 0.3; headX = 0.1; hipsY = 0.86;
+      leanZ = s * 0.42;
+    }
   } else if (stateName === 'crash') {
     k = 12;
     const p = clamp(st.crashT / 0.45, 0, 1);
-    flipX = -p * (Math.PI / 2 + 0.1);
-    lx = 0.4; rlx = -0.2; lk = -0.3; rk = -0.2;
-    la = 2.7 * p; ra = 2.6 * p; laz = -0.6; raz = 0.6;
-    hipsY = 0.9 - 0.1 * p;
-    torsoX = -0.1;
-    pivY = 0.8 - 0.5 * p;
+    if (st.kind === 'slam') { // hit a train head-on: thrown backwards, limbs flying
+      flipX = p * 1.45;
+      lx = 1.1 * p; rlx = 0.7 * p; lk = -0.6; rk = -0.9 * p;
+      la = -1.6 * p; ra = -1.3 * p; laz = -1.0; raz = 1.0; lf = 0.3; rf = 0.5;
+      torsoX = 0.3 * p; headX = 0.5 * p;
+      hipsY = 0.9 - 0.12 * p;
+      pivY = 0.8 - 0.45 * p;
+    } else {
+      flipX = -p * (Math.PI / 2 + 0.1);
+      lx = 0.4; rlx = -0.2; lk = -0.3; rk = -0.2;
+      la = 2.7 * p; ra = 2.6 * p; laz = -0.6; raz = 0.6;
+      hipsY = 0.9 - 0.1 * p;
+      torsoX = -0.1;
+      pivY = 0.8 - 0.5 * p;
+    }
   } else if (stateName === 'board') {
     k = 14;
     lx = 0.35; rlx = -0.12; lk = -0.55; rk = -0.5;
@@ -525,6 +691,7 @@ export function poseCharacter(ch, st, dt) {
     torsoY = Math.sin(t * 0.7) * 0.15;
   }
 
+  if (ch.stars) { ch.stars.visible = stateName === 'crash' && st.crashT > 0.3; ch.stars.rotation.y = t * 5; }
   setRot(r.legL, lx, 0, 0, dt, k);
   setRot(r.legR, rlx, 0, 0, dt, k);
   setRot(r.shinL, lk, 0, 0, dt, k);
@@ -537,7 +704,7 @@ export function poseCharacter(ch, st, dt) {
   setRot(r.head, headX, headY, 0, dt, k);
   r.hips.position.y = damp(r.hips.position.y, hipsY + 0.11, k, dt);
   r.flip.rotation.x = stateName === 'roll' ? flipX : damp(r.flip.rotation.x % (Math.PI * 2), flipX, stateName === 'crash' ? 9 : 16, dt);
-  r.lean.rotation.z = damp(r.lean.rotation.z, leanZ, 14, dt);
+  r.lean.rotation.z = damp(r.lean.rotation.z, leanZ, stateName === 'stumble' ? 24 : 14, dt);
   r.model.scale.setScalar(damp(r.model.scale.x, modelS, 30, dt));
   r.flip.position.y = damp(r.flip.position.y, pivY, 30, dt);
   r.model.position.y = -r.flip.position.y;

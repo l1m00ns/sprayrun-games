@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as C from './consts.js';
-import { mat, vcMat, texMat } from './materials.js';
+import { mat, vcMat, texMat, basicMat } from './materials.js';
 import * as P from './props.js';
 import * as BT from './biomeTex.js';
 import { mk, toTex } from './textures.js';
@@ -78,7 +78,12 @@ export function initBiomes(A) {
     mesa: P.mesa(), mountain: P.mountain(), cabin: P.cabin(), cabinGlow: P.cabinGlow(), hut: P.hut(),
     tiki: P.tiki(), tikiFlame: P.tikiFlame(), umbrella: P.umbrella(), snowman: P.snowman(), surfboard: P.surfboard(),
     windmill: P.windmill(), pipe: P.pipe(),
+    waterTower: P.waterTower(), crane: P.crane(), radioTower: P.radioTower(), beacon: P.beacon(), billboardPost: P.billboardPost(), billboardGlow: P.billboardGlow(),
+    igloo: P.igloo(), iceCrystal: P.iceCrystal(), lifeguard: P.lifeguard(), buoy: P.buoy(), oilTank: P.oilTank(), adobe: P.adobe(),
+    pier: P.pier(), tikiBar: P.tikiBar(), volleyNet: P.volleyNet(), towel: P.towel(), sandcastle: P.sandcastle(), canoe: P.canoe(), hibiscus: P.hibiscus(), coconuts: P.coconuts(),
   };
+  A.beaconMat = mat('#ff3030', { emissive: 0xff2020, ei: 1.4 });
+  A.signMats = ['#ff3dd0', '#2bdcff', '#ffd23f'].map((c) => mat(c, { emissive: new THREE.Color(c), ei: 1.3 }));
   A.umbrellaMat = mat('#ffffff', { vc: true, side: THREE.DoubleSide });
 
   // water
@@ -93,6 +98,16 @@ export function initBiomes(A) {
   A.waterTex = toTex(c, { repeat: true });
   A.waterTex.repeat.set(12, 6);
   A.waterMat = texMat(A.waterTex, { emissive: 0x0a5a6a, ei: 0.25 });
+  const [wc, wctx] = mk(256, 256); // sun glitter: soft bright specks that drift against the main waves
+  for (let i = 0; i < 260; i++) { const x = Math.random() * 256, y = Math.random() * 256, r = 1 + Math.random() * 2.6; const g = wctx.createRadialGradient(x, y, 0, x, y, r * 3); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(1, 'rgba(255,255,255,0)'); wctx.fillStyle = g; wctx.fillRect(x - r * 3, y - r * 3, r * 6, r * 6); }
+  A.glitterTex = toTex(wc, { repeat: true }); A.glitterTex.repeat.set(9, 5);
+  A.glitterMat = basicMat('#ffffff', { map: A.glitterTex, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+  const [fc, fctx] = mk(64, 256); // foam: a wavy white band fading out towards the sea
+  const fg = fctx.createLinearGradient(0, 0, 64, 0); fg.addColorStop(0, 'rgba(255,255,255,0)'); fg.addColorStop(0.55, 'rgba(255,255,255,0.95)'); fg.addColorStop(1, 'rgba(255,255,255,0)');
+  fctx.fillStyle = fg; for (let y = 0; y < 256; y += 4) { const w = 18 + Math.sin(y * 0.09) * 7 + Math.sin(y * 0.23) * 4; fctx.fillRect(32 - w, y, w * 2, 4); }
+  fctx.globalCompositeOperation = 'destination-in'; fctx.fillStyle = fg; fctx.fillRect(0, 0, 64, 256);
+  A.foamTex = toTex(fc, {});
+  A.foamMat = basicMat('#ffffff', { map: A.foamTex, transparent: true, opacity: 0.8, depthWrite: false });
 
   // neon
   A.neonFacades = [1, 2, 3, 4, 5, 6].map((s) => {
@@ -164,7 +179,7 @@ function instanced(seg, geo, material, items, opts = {}) {
   const col = new THREE.Color();
   items.forEach((it, i) => {
     d.position.set(it.x, it.y, it.z);
-    d.rotation.set(0, it.ry || 0, 0);
+    d.rotation.set(it.rx || 0, it.ry || 0, it.rz || 0);
     d.scale.set(it.sx ?? it.s ?? 1, it.sy ?? it.s ?? 1, it.sz ?? it.s ?? 1);
     d.updateMatrix();
     m.setMatrixAt(i, d.matrix);
@@ -209,16 +224,44 @@ export function decorSnow(seg, A, index) {
 
 export function decorTropic(seg, A, index) {
   addTerrain(seg, 'tropic', index);
+  // --- sea: two layers of light moving against each other, a foam line that breathes in and out, sun glitter
   const water = new THREE.Mesh(new THREE.PlaneGeometry(110, L, 4, 24).rotateX(-Math.PI / 2).translate(-77, -1.35, -L / 2), A.waterMat);
   water.frustumCulled = false; seg.own.push(water.geometry); seg.add(water);
-  instanced(seg, A.props.palm, A.vc, scatter('tropic', index, 1, 16, 6.8, 30, 0.9, 1.5), { tint: [0.3, 0, 0.5] });
-  instanced(seg, A.props.palm, A.vc, scatter('tropic', index, -1, 5, 6.8, 13, 0.9, 1.4));
-  const hutItems = scatter('tropic', index, 1, 1, 9, 16, 1.0, 1.3, () => ({ ry: Math.PI / 2 * -1 }));
-  instanced(seg, A.props.hut, A.vc, hutItems);
-  instanced(seg, A.props.umbrella, A.umbrellaMat, scatter('tropic', index, -1, 3, 7, 12, 0.9, 1.2));
-  instanced(seg, A.props.surfboard, A.vc, scatter('tropic', index, -1, 3, 6.8, 11, 0.9, 1.1));
+  const glitter = new THREE.Mesh(new THREE.PlaneGeometry(110, L, 1, 1).rotateX(-Math.PI / 2).translate(-77, -1.3, -L / 2), A.glitterMat);
+  glitter.frustumCulled = false; seg.own.push(glitter.geometry); seg.add(glitter);
+  const foam = new THREE.Mesh(new THREE.PlaneGeometry(3.4, L, 1, 1).rotateX(-Math.PI / 2).translate(0, 0, -L / 2), A.foamMat);
+  foam.position.set(-15.2, -1.28, 0); foam.frustumCulled = false; seg.own.push(foam.geometry); seg.add(foam);
+  const ph = index * 1.7;
+  seg.anims.push((dt, t) => {
+    A.waterTex.offset.set(t * 0.018, t * 0.03); A.glitterTex.offset.set(-t * 0.022, t * 0.011);
+    foam.position.x = -15.4 + Math.sin(t * 0.9 + ph) * 0.7; A.foamMat.opacity = 0.55 + 0.3 * Math.sin(t * 0.9 + ph + 1.2);
+  });
+  // --- palms: dense on the land side, leaning ones on the beach, young ones near the water
+  const lean = () => ({ rz: (Math.random() - 0.5) * 0.28, rx: (Math.random() - 0.5) * 0.2 });
+  instanced(seg, A.props.palm, A.vc, scatter('tropic', index, 1, 20, 6.8, 34, 0.9, 1.6, lean), { tint: [0.3, 0, 0.5] });
+  instanced(seg, A.props.palm, A.vc, scatter('tropic', index, -1, 7, 6.8, 13, 0.8, 1.4, lean));
+  instanced(seg, A.props.hibiscus, A.vc, scatter('tropic', index, 1, 9, 6.6, 20, 0.8, 1.4));
+  instanced(seg, A.props.coconuts, A.vc, scatter('tropic', index, -1, 3, 6.6, 12, 0.9, 1.2));
+  instanced(seg, A.props.hut, A.vc, scatter('tropic', index, 1, 1, 9, 16, 1.0, 1.3, () => ({ ry: -Math.PI / 2 })));
+  instanced(seg, A.props.umbrella, A.umbrellaMat, scatter('tropic', index, -1, 4, 7, 12, 0.9, 1.2));
+  instanced(seg, A.props.surfboard, A.vc, scatter('tropic', index, -1, 4, 6.8, 11, 0.9, 1.1, lean));
   instanced(seg, A.props.rockSand, A.vc, scatter('tropic', index, 1, 5, 6.8, 22, 0.6, 1.4));
-  // tiki torches along both walls
+  // --- beach life
+  instanced(seg, A.props.towel, A.vc, scatter('tropic', index, -1, 3, 6.8, 12, 0.9, 1.1));
+  if (chance(0.45)) instanced(seg, A.props.sandcastle, A.vc, scatter('tropic', index, -1, 1, 7, 11, 0.7, 1.1));
+  if (chance(0.35)) instanced(seg, A.props.volleyNet, A.vc, scatter('tropic', index, -1, 1, 8, 12, 1.0, 1.1, () => ({ ry: Math.PI / 2 })));
+  if (chance(0.4)) instanced(seg, A.props.lifeguard, A.vc, scatter('tropic', index, -1, 1, 9, 13, 1.0, 1.15, () => ({ ry: Math.PI / 2 })));
+  if (chance(0.4)) instanced(seg, A.props.tikiBar, A.vc, scatter('tropic', index, 1, 1, 9, 14, 1.0, 1.2, () => ({ ry: -Math.PI / 2 })));
+  if (chance(0.5)) instanced(seg, A.props.canoe, A.vc, scatter('tropic', index, -1, 1, 10, 13, 0.9, 1.2, () => ({ ry: Math.PI / 2 + (Math.random() - 0.5) * 0.4 })));
+  // --- in the water: a pier, buoys bobbing, a lighthouse-style horizon
+  if (chance(0.4)) { const z = -rand(14, L - 14), it = { x: -25, z, y: -0.55, s: 1, ry: 0 }; instanced(seg, A.props.pier, A.vc, [it]); }
+  const buoys = [0, 1, 2].map(() => ({ x: -rand(20, 46), z: -rand(4, L - 4), y: -1.25, s: rand(0.9, 1.4) }));
+  const buoyMesh = instanced(seg, A.props.buoy, A.vc, buoys);
+  if (buoyMesh) {
+    const d = new THREE.Object3D();
+    seg.anims.push((dt, t) => { buoys.forEach((b2, i) => { d.position.set(b2.x, b2.y + Math.sin(t * 1.6 + i * 2 + ph) * 0.12, b2.z); d.rotation.set(Math.sin(t * 1.3 + i) * 0.1, 0, Math.cos(t * 1.1 + i) * 0.1); d.scale.setScalar(b2.s); d.updateMatrix(); buoyMesh.setMatrixAt(i, d.matrix); }); buoyMesh.instanceMatrix.needsUpdate = true; });
+  }
+  // --- tiki torches along both walls
   for (const side of [-1, 1]) {
     const items = [];
     for (let z = -6; z > -L; z -= 12) items.push({ x: side * 5.05, y: 2.0, z, s: 1 });
@@ -226,6 +269,41 @@ export function decorTropic(seg, A, index) {
     instanced(seg, A.props.tikiFlame, A.tikiGlowMat, items);
   }
   if (chance(0.4)) instanced(seg, A.props.mountain, A.vc, scatter('tropic', index, 1, 1, 70, 110, 1.0, 1.8).map((i2) => ({ ...i2, s: i2.s })));
+}
+
+// Skyline landmarks, arctic and desert details (the tropic has its own set above)
+export function decorExtras(seg, A, id, index) {
+  const blink = () => seg.anims.push((dt, t) => { A.beaconMat.emissiveIntensity = Math.sin(t * 3.2) > 0.3 ? 1.6 : 0.15; });
+  if (id === 'city' || id === 'neon') {
+    for (const side of [-1, 1]) {
+      if (chance(id === 'neon' ? 0.55 : 0.4)) {
+        const cr = scatter(id, index, side, 1, 58, 92, 1.5, 2.2, () => ({ ry: rand(-0.4, 0.4) + (side > 0 ? Math.PI : 0), y: 0 }));
+        instanced(seg, A.props.crane, A.vc, cr);
+        instanced(seg, A.props.beacon, A.beaconMat, cr.map((c) => ({ x: c.x, y: 27.4 * c.s, z: c.z, s: c.s * 1.3 }))); blink();
+      }
+      if (chance(0.45)) {
+        const rt = scatter(id, index, side, 1, 50, 90, 2.0, 3.0, () => ({ y: 0 }));
+        instanced(seg, A.props.radioTower, A.vc, rt);
+        instanced(seg, A.props.beacon, A.beaconMat, rt.map((c) => ({ x: c.x, y: 19.6 * c.s, z: c.z, s: c.s * 1.2 }))); blink();
+      }
+      if (chance(0.5)) instanced(seg, A.props.waterTower, A.vc, scatter(id, index, side, 1, 36, 62, 1.1, 1.7, () => ({ y: 0 })));
+      if (id === 'neon' && chance(0.7)) {
+        const bb = scatter(id, index, side, 1, 40, 70, 1.4, 2.0, () => ({ ry: side > 0 ? Math.PI * 0.62 : -Math.PI * 0.62, y: 0 }));
+        instanced(seg, A.props.billboardPost, A.vc, bb);
+        instanced(seg, A.props.billboardGlow, A.signMats[(index + (side > 0 ? 1 : 0)) % 3], bb);
+      }
+    }
+  } else if (id === 'snow') {
+    for (const side of [-1, 1]) {
+      if (chance(0.45)) instanced(seg, A.props.igloo, A.vc, scatter('snow', index, side, 1, 10, 17, 0.9, 1.3, () => ({ ry: side * Math.PI / 2 })));
+      instanced(seg, A.props.iceCrystal, A.vc, scatter('snow', index, side, 3, 8, 26, 0.8, 1.7));
+    }
+  } else if (id === 'desert') {
+    for (const side of [-1, 1]) {
+      if (chance(0.6)) instanced(seg, A.props.adobe, A.vc, scatter('desert', index, side, 1, 11, 20, 1.0, 1.4, () => ({ ry: side * Math.PI / 2 })));
+      if (chance(0.4)) instanced(seg, A.props.oilTank, A.vc, scatter('desert', index, side, 1, 18, 42, 1.0, 1.6));
+    }
+  }
 }
 
 export function decorDesert(seg, A, index) {

@@ -10,3 +10,7 @@ next-env.d.ts
 .env.local
 /*.png
 !/logo.png
+
+# a model dropped in the project root: its node names (avatar_jake, jake_outfit...) show it comes from the commercial game, never published
+/Rio.glb
+*.glb.bak

@@ -94,6 +94,7 @@ export const OPTIONS = [
   // ---- Tools
   T('debug', 'Tools', 'Debug overlay', false, { taint: false }),
   B('instantDie', 'Tools', 'End the run now'),
+  B('unload', 'Tools', 'Unload: turn everything off and go back online', { taint: false }),
   B('resetAll', 'Tools', 'Reset every option', { taint: false }),
   B('lockMenu', 'Tools', 'Lock the secret menu again', { taint: false }),
 ];
@@ -109,6 +110,7 @@ export function resetAll() { for (const o of OPTIONS) if (o.t !== 'button') chea
 // A session is "practice" (nothing banked / submitted / ranked) as soon as one gameplay option is off its default.
 export const tainted = () => OPTIONS.some((o) => o.taint && o.t !== 'button' && cheats[o.id] !== o.def)
   || !!cheats.bot; // the bot always makes it a practice run, even in "invincible: off" mode
+export const groupActive = (g) => OPTIONS.filter((o) => o.g === g && o.t !== 'button' && cheats[o.id] !== o.def).length;
 export const activeCount = () => OPTIONS.filter((o) => o.t !== 'button' && cheats[o.id] !== o.def).length;
 
 export function konamiListener(onTrigger) {
@@ -121,8 +123,10 @@ export function konamiListener(onTrigger) {
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // Renders one group. `onChange(id, value)` after each edit; `onButton(id)` for buttons.
-export function renderGroup(body, group, onChange, onButton) {
-  const items = OPTIONS.filter((o) => o.g === group);
+export function renderGroup(body, group, onChange, onButton, query = '') {
+  const q = String(query).trim().toLowerCase(); // a search looks through every group
+  const items = q ? OPTIONS.filter((o) => `${o.label} ${o.g} ${o.hint || ''}`.toLowerCase().includes(q)) : OPTIONS.filter((o) => o.g === group);
+  if (!items.length) { body.innerHTML = '<p class="empty">No option matches.</p>'; return; }
   body.innerHTML = items.map((o) => {
     const v = cheats[o.id];
     let ctl = '';
@@ -130,7 +134,7 @@ export function renderGroup(body, group, onChange, onButton) {
     else if (o.t === 'select') ctl = `<select data-k="${o.id}">${o.opts.map(([val, n]) => `<option value="${esc(val)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
     else if (o.t === 'range') ctl = `<input type="range" data-k="${o.id}" min="${o.min}" max="${o.max}" step="${o.step}" value="${v}"><output data-o="${o.id}">${o.fmt(v)}</output>`;
     else ctl = `<button class="btn sm" data-b="${o.id}">GO</button>`;
-    return `<div class="set-row"><span>${esc(o.label)}${o.taint && o.t !== 'button' ? '' : ''}${o.hint ? `<small>${esc(o.hint)}</small>` : ''}</span><div class="set-ctl">${ctl}</div></div>`;
+    return `<div class="set-row${cheats[o.id] !== o.def && o.t !== 'button' ? ' on' : ''}"><span>${esc(o.label)}${q ? `<i class="sec-g">${esc(o.g)}</i>` : ''}${o.hint ? `<small>${esc(o.hint)}</small>` : ''}</span><div class="set-ctl">${ctl}</div></div>`;
   }).join('');
   for (const el of body.querySelectorAll('[data-k]')) {
     const o = OPTIONS.find((q) => q.id === el.dataset.k);

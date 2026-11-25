@@ -3,10 +3,26 @@ import { q } from './db.mjs';
 import { verify } from './auth.mjs';
 import { nowMs } from './catalog.mjs';
 
+// CORS_ORIGIN = the front-end's address(es), comma separated (e.g. https://my-game.vercel.app). Default "*" (any site may call the API).
+export const ALLOWED_ORIGINS = () => (process.env.CORS_ORIGIN || '*').split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean);
+export function corsOrigin(origin) {
+  const list = ALLOWED_ORIGINS();
+  if (list.includes('*')) return '*';
+  return origin && list.includes(origin) ? origin : list[0];
+}
+// WebSocket handshakes are not covered by CORS: this is the same check, applied to the Origin header of /ws.
+export function originAllowed(origin) {
+  const list = ALLOWED_ORIGINS();
+  if (list.includes('*') || !origin) return true; // non-browser clients (tests, tools) send no Origin
+  return list.includes(String(origin).replace(/\/+$/, ''));
+}
+
 export function reply(res, code, obj) {
+  const origin = corsOrigin(res.req && res.req.headers && res.req.headers.origin);
   res.writeHead(code, {
-    'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Admin-Key',
+    'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Admin-Key',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+    ...(origin !== '*' ? { Vary: 'Origin' } : {}),
   });
   res.end(JSON.stringify(obj));
 }

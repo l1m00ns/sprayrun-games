@@ -6,7 +6,7 @@ import { mat, texMat, basicMat, toonRamp, fxLayer } from './materials.js';
 import { applyBend } from './bend.js';
 import * as T from './textures.js';
 import { rand, randInt, pick, chance, clamp, R, withSeed } from './util.js';
-import { BIOMES, BIOME_ORDER, TOUR_SEGS, initBiomes, decorSnow, decorTropic, decorDesert, setYard } from './biomes.js';
+import { BIOMES, BIOME_ORDER, TOUR_SEGS, initBiomes, decorSnow, decorTropic, decorDesert, decorExtras, setYard } from './biomes.js';
 import * as BT from './biomeTex.js';
 import { addDynamic } from './dynamic.js';
 import { buildTrain } from './trains.js';
@@ -273,6 +273,7 @@ class Segment {
     if (id === 'snow') decorSnow(this, A, index);
     else if (id === 'tropic') decorTropic(this, A, index);
     else if (id === 'desert') decorDesert(this, A, index);
+    decorExtras(this, A, id, index);
     for (const side of [-1, 1]) if (yard[side]) this.railYard(side, id);
     addDynamic(this, id);
 
@@ -632,6 +633,10 @@ export class World {
           if (adx < 0.6) { ground = Math.max(ground, top); continue; }
         }
         if (s.walkable && py >= top - C.STEP_TOL) { ground = Math.max(ground, top); continue; }
+        if (s.solidTop && py >= top - 0.04 && py < top + 0.8) { // a wall you cannot stand on: coming down onto the roof is a crash (the band is deep enough not to be skipped in one frame)
+          if (!hit || !hit.front) hit = { solid: s, front: true, lethal: true, kind: s.kind };
+          continue;
+        }
         if (py + ph > s.yMin + 0.03 && py < top - (s.walkable ? C.STEP_TOL : 0.04)) {
           const depth = zMax + HD;
           const front = depth < frontDepth + (s.vz ? s.vz * 0.03 : 0);
@@ -647,7 +652,9 @@ export class World {
     const dist = Math.max(0, seg.index * L - L * 0.7);
     const d = clamp(dist / 4500, 0, 1);
     const speed = C.speedAtDist(dist);
-    const gap = Math.max(12, speed * 0.8); // room for two 0.27 s lane changes
+    const h = clamp((dist - 4500) / 6000, 0, 1); // second difficulty tier: after ~4.5 km everything keeps tightening
+    const gap = Math.max(9.5, speed * (0.8 - 0.26 * d - 0.08 * h)); // room for two lane changes; shrinks as the run goes on
+    this.hard = h;
     let z = -9;
     const end = -L + 6;
     let hardStreak = 0;
@@ -668,9 +675,11 @@ export class World {
   }
 
   pickEvent(d, hardStreak) {
+    const h = this.hard || 0;
     const table = [
-      ['coins', 26 - d * 12 + hardStreak * 6], ['rest', 4 + hardStreak * 4], ['low', 24], ['over', 18],
-      ['mixed', 8 + d * 22], ['train', 14 + d * 28], ['container', d > 0.18 ? 6 + d * 10 : 0], ['moving', d > 0.02 ? 12 + d * 20 : 0],
+      ['coins', 22 - d * 14 - h * 4 + hardStreak * 6], ['rest', 3 + hardStreak * 4], ['low', 20 - d * 4], ['over', 16 - d * 3],
+      ['mixed', 8 + d * 24 + h * 8], ['train', 14 + d * 26], ['container', d > 0.18 ? 6 + d * 12 : 0], ['moving', d > 0.02 ? 12 + d * 26 + h * 6 : 0],
+      ['corridor', d > 0.08 ? 6 + d * 38 + h * 16 : 0], // trains side by side with a free path (and barriers on it): slalom, gauntlets
     ];
     let total = 0;
     for (const t of table) total += t[1];
@@ -699,6 +708,64 @@ export class World {
     return true;
   }
 
+  // Carriages that still fit between z and the end of this segment (a train must not run into the next segment's first obstacles).
+  fitCars(z) { return Math.max(1, Math.floor((z + L - 3 + C.CARRIAGE_GAP) / (C.CARRIAGE_LEN + C.CARRIAGE_GAP))); }
+
+  // Trains on every lane that is not part of a free path. The path wanders one lane at a time (both lanes are open while it
+  // moves, so it can always be followed) and, on straight stretches, holds a barrier: jump or roll while the lanes beside are walls.
+  placeCorridor(seg, z, d, biome) {
+    const U = C.CARRIAGE_LEN + C.CARRIAGE_GAP;
+    const n = Math.min(this.fitCars(z), 2 + Math.floor(d * 2.4) + (chance(0.35) ? 1 : 0), 4);
+    if (n < 2) { this.placeLow(seg, randInt(0, 2), z); return 4; }
+    const free = [], barrier = [], bt = chance(0.5) ? 'low' : 'over'; // one barrier type per corridor: low then over (or the reverse) 0.3 s apart cannot be done at speed
+    let cur = randInt(0, 2), straight = 0;
+    const startLane = cur;
+    for (let u = 0; u < n; u++) {
+      if (u < n - 1 && chance(0.28 + d * 0.4)) {
+        const nxt = cur === 1 ? (chance(0.5) ? 0 : 2) : 1;
+        free.push([cur, nxt]); barrier.push(null); cur = nxt; straight = 0;
+      } else {
+        free.push([cur]);
+        barrier.push(straight >= 1 && chance(0.2 + d * 0.5) ? bt : null); // never right after a lane change
+        straight++;
+      }
+    }
+    for (let l = 0; l < 3; l++) {
+      for (let u = 0; u < n;) {
+        if (free[u].includes(l)) { u++; continue; }
+        let e = u; while (e < n && !free[e].includes(l)) e++;
+        this.placeTrain(seg, l, z - u * U, e - u, false, biome, 0);
+        u = e;
+      }
+    }
+    for (let u = 0; u < n; u++) {
+      const l = free[u][free[u].length - 1], zu = z - u * U;
+      if (barrier[u] === 'low') this.placeLow(seg, l, zu - U / 2); else if (barrier[u] === 'over') this.placeOver(seg, l, zu - U / 2);
+      else if (free[u].length === 1) this.coinLine(C.LANES[l], 1.0, zu - 1.5, 5, 1.8);
+    }
+    this.maybeItem(C.LANES[startLane], 1.4, z - 4, 0.25);
+    return n * U;
+  }
+
+  // Removes solids near the player (hoverboard crash: the shockwave must not leave the runner standing inside a train).
+  clearLane(x, ahead) {
+    for (const s of this.segs) {
+      s.solids = s.solids.filter((o) => {
+        if (Math.abs(o.x - x) > 0.8) return true;
+        const zf = -(s.z + o.lz1 + (o.off || 0)), zb = -(s.z + o.lz0 + (o.off || 0));
+        if (zb > -4 && zf < ahead) { if (o.obj) o.obj.visible = false; return false; }
+        return true;
+      });
+    }
+  }
+  removeSolid(solid) {
+    for (const s of this.segs) {
+      const i = s.solids.indexOf(solid);
+      if (i >= 0) { s.solids.splice(i, 1); if (solid.obj) solid.obj.visible = false; return true; }
+    }
+    return false;
+  }
+
   placeLow(seg, lane, z, yBase = 0) {
     const m = makeLow(); m.position.set(C.LANES[lane], yBase, z); seg.add(m);
     seg.addSolid({ kind: 'low', obj: m, x: C.LANES[lane], hw: 0.95, lz0: z - 0.35, lz1: z + 0.35, yMin: yBase, yMax: yBase + C.LOW_H, walkable: true, lethal: false });
@@ -710,12 +777,13 @@ export class World {
   placeContainer(seg, lane, z, len) {
     const m = makeContainer(len, randInt(0, 1)); m.position.set(C.LANES[lane], 0, z); seg.add(m);
     m.children.forEach((c) => seg.own.push(c.geometry));
-    seg.addSolid({ kind: 'container', obj: m, x: C.LANES[lane], hw: 0.95, lz0: z - len, lz1: z, yMin: 0, yMax: C.TRAIN_H, walkable: true, lethal: true });
+    seg.addSolid({ kind: 'container', obj: m, x: C.LANES[lane], hw: 0.95, lz0: z - len, lz1: z, yMin: 0, yMax: C.TRAIN_H, walkable: C.ROOF_RUN, solidTop: !C.ROOF_RUN, lethal: true });
   }
   placeTrain(seg, lane, z, carriages, ramp, biome, vz = 0) {
     const TRIGGER = 50;
     const x = C.LANES[lane];
     let zt = z;
+    ramp = ramp && C.ROOF_RUN;
     if (ramp) {
       const r = makeRamp(); r.position.set(x, 0, z); seg.add(r);
       seg.addSolid({ kind: 'ramp', obj: r, ramp: true, x, hw: 0.95, lz0: z - C.RAMP_LEN, lz1: z, yMin: 0, yMax: C.TRAIN_H, walkable: true, lethal: false });
@@ -730,7 +798,7 @@ export class World {
       headlight.position.set(0, 1.9, 0.4); headlight.frustumCulled = false; fxLayer(headlight); t.add(headlight);
       seg.own.push(headlight.geometry);
     }
-    seg.addSolid({ kind: 'train', obj: t, baseZ: zt, off: 0, vz, trigger: vz ? TRIGGER : 0, headlight, started: false, steam: !!t.userData.steam, x, hw: 0.95, lz0: zt - len, lz1: zt, yMin: 0, yMax: C.TRAIN_H, walkable: true, lethal: true });
+    seg.addSolid({ kind: 'train', obj: t, baseZ: zt, off: 0, vz, trigger: vz ? TRIGGER : 0, headlight, started: false, steam: !!t.userData.steam, x, hw: 0.95, lz0: zt - len, lz1: zt, yMin: 0, yMax: C.TRAIN_H, walkable: C.ROOF_RUN, solidTop: !C.ROOF_RUN, lethal: true });
     return { zt, len };
   }
 
@@ -796,18 +864,21 @@ export class World {
       }
       case 'moving': {
         const lane = pick(lanes);
-        const r = this.placeTrain(seg, lane, z, randInt(1, z - 24 > -L ? 2 : 1), false, biome, vz || 12);
+        const fit = this.fitCars(z);
+        const cars = clamp(randInt(1 + (d > 0.2 ? 1 : 0), 2 + Math.floor(d * 2.6 + (this.hard || 0))), 1, fit); // oncoming trains get longer as the run goes on
+        const r = this.placeTrain(seg, lane, z, cars, false, biome, vz || 12);
         const free = lanes.filter((l) => l !== lane);
         this.coinLine(C.LANES[pick(free)], 1.0, z + 2, 8, 1.6);
         return z - (r.zt - r.len);
       }
+      case 'corridor': return this.placeCorridor(seg, z, d, biome);
       case 'train': {
         const nl = d > 0.25 && chance(0.35 + d * 0.3) ? 2 : 1;
         const set = shuffled().slice(0, nl);
-        const carriages = randInt(1, d > 0.4 ? 3 : 2);
+        const carriages = clamp(randInt(1 + (d > 0.25 ? 1 : 0), 2 + Math.floor(d * 2.6)), 1, this.fitCars(z));
         let span = 0, rampLane = -1;
         for (const l of set) {
-          const ramp = rampLane < 0 && chance(0.6);
+          const ramp = C.ROOF_RUN && rampLane < 0 && chance(0.6);
           const k = nl === 2 && chance(0.5) ? Math.max(1, carriages - 1) : carriages;
           const r = this.placeTrain(seg, l, z, k, ramp, biome);
           span = Math.max(span, z - (r.zt - r.len));

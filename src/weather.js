@@ -69,7 +69,7 @@ export class Weather {
     if (this.want !== this.type && this.level <= 0.001) { this.applyType(this.want); }
     const c = CFG[this.type];
     const lvl = this.type === 'none' || this.type === 'rain' ? 0 : this.level;
-    const count = c ? Math.floor(Math.min(N, c.count) * lvl) : 0;
+    const count = c ? Math.floor(Math.min(N, c.count) * lvl * (this.budget ?? 1)) : 0;
     this.geo.setDrawRange(0, count);
     if (c && count > 0) {
       const t = performance.now() * 0.001;
@@ -87,8 +87,9 @@ export class Weather {
     this.rainMat.opacity = 0.32 * rainOn;
     this.rain.visible = rainOn > 0.01;
     if (this.rain.visible) {
-      const d = this.dummy;
-      for (let i = 0; i < RAIN; i++) {
+      const d = this.dummy, nRain = Math.floor(RAIN * (this.budget ?? 1));
+      this.rain.count = nRain;
+      for (let i = 0; i < nRain; i++) {
         const r = this.rd[i];
         r.y -= r.v * dt; r.z += speed * dt * 0.9;
         if (r.y < 0 || r.z > 10) { r.y = 14 + Math.random() * 4; r.z = -70 * Math.random() - 4; r.x = (Math.random() - 0.5) * 30; }

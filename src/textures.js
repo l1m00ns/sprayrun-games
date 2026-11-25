@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { drawBoard } from './icons.js';
 import { mulberry32 } from './util.js';
 import { bubblePiece, paletteFromTriple, paintWall } from './graffiti.js';
 
@@ -558,12 +559,7 @@ export function makeIconTexture(kind, color) {
     ctx.strokeText('2x', 128, 166);
     ctx.fillText('2x', 128, 166);
   } else if (kind === 'board') {
-    ctx.fillStyle = '#fff';
-    rr(ctx, 44, 100, 168, 52, 24); ctx.fill();
-    ctx.fillStyle = color;
-    rr(ctx, 60, 112, 136, 20, 10); ctx.fill();
-    ctx.fillStyle = '#ffd23f';
-    ctx.beginPath(); ctx.arc(80, 170, 8, 0, 7); ctx.arc(128, 180, 8, 0, 7); ctx.arc(176, 170, 8, 0, 7); ctx.fill();
+    drawBoard(ctx, 128, 132, 1.9, { deck: '#ffffff', rail: color });
   }
   return toTex(c);
 }

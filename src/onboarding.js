@@ -6,7 +6,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 
 // Option cards: [value, title, description]
 const CARDS = {
-  quality: [['low', 'Performance', 'Smooth on any computer.'], ['high', 'High (bloom + shadows)', 'Best looking, needs a decent GPU.']],
+  quality: [['low', 'Performance', 'Smooth on any computer.'], ['medium', 'Balanced', 'Shadows on, no post-processing.'], ['high', 'High (bloom + shadows)', 'Best looking, needs a decent GPU.']],
   controls: [['snappy', 'Snappy (instant)', 'Near-instant lane switches. Recommended.'], ['classic', 'Classic (authentic)', 'The original, slower lane change.']],
   camera: [['close', 'Close', 'Tight behind the runner.'], ['normal', 'Normal', 'Balanced view.'], ['far', 'Far', 'See more of the track.']],
 };
@@ -16,7 +16,7 @@ export function createOnboarding(ctx) {
   let step = 0;
   const STEPS = ['lang', 'look', 'controls', 'privacy', 'account'];
 
-  const cards = (key, list, cur) => `<div class="obcards" data-key="${key}">${list.map(([v, t, d]) => `<button class="obcard${String(cur) === String(v) ? ' sel' : ''}" data-v="${esc(v)}"><b>${esc(t)}</b><small>${esc(t(d))}</small></button>`).join('')}</div>`;
+  const cards = (key, list, cur) => `<div class="obcards" data-key="${key}">${list.map(([v, title, d]) => `<button class="obcard${String(cur) === String(v) ? ' sel' : ''}" data-v="${esc(v)}"><b>${esc(t(title))}</b><small>${esc(t(d))}</small></button>`).join('')}</div>`;
   const toggle = (key, label, cur) => `<div class="set-row"><span>${esc(label)}</span><div class="set-ctl"><label class="sw"><input type="checkbox" data-t="${key}" ${cur ? 'checked' : ''}><i></i></label></div></div>`;
 
   function render() {

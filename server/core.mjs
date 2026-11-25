@@ -3,7 +3,7 @@ import { WebSocketServer } from 'ws';
 import { db, q } from './db.mjs';
 import { sign, verify, nonce, uuid } from './auth.mjs';
 import { validateRun, checkLive, classify, maxDistAt, maxScore } from './anticheat.mjs';
-import { reply, readJson, authPlayer, clientIp } from './http.mjs';
+import { reply, readJson, authPlayer, clientIp, originAllowed } from './http.mjs';
 import { profile, careerOf, tierOf as tierOfRating, strike as strikeP, accessProblem, trackSocket, untrackSocket, recordEvent, kick } from './players.mjs';
 import { routeV2 } from './routes.mjs';
 import { applyRun, bumpCareer, addXp } from './economy.mjs';
@@ -356,6 +356,11 @@ export function attachWs(server) {
   wss = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: false });
   server.on('upgrade', (req, socket, head) => {
     if (!(req.url || '').startsWith('/ws')) return; // let other handlers (Next dev HMR) deal with their own upgrades
+    const origin = req.headers.origin;
+    if (origin && !originAllowed(origin)) { // CORS_ORIGIN restricts which sites may open a socket (same-origin pages are always fine)
+      let same = false; try { same = new URL(origin).host === req.headers.host; } catch { /* malformed Origin */ }
+      if (!same) { socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); socket.destroy(); return; }
+    }
     socket.setNoDelay(true); // no Nagle batching: lowest possible latency
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   });

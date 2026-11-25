@@ -1,6 +1,21 @@
 // Update history shown in the game's "Updates" tab. Newest first. Edit this file when you ship something.
 export const UPDATES = [
   {
+    version: '1.3.1', date: '2026-11-25', title: 'Solid trains, tougher runs',
+    tags: ['gameplay', 'performance'],
+    notes: [
+      'Trains are solid walls now: no more walking on roofs, no more passing through them. A hoverboard crash clears the obstacle it took.',
+      'Longer oncoming trains, up to four carriages, and corridors: slaloms and jump-or-roll sequences between walls. The run keeps tightening after 4.5 km, and top speed is higher.',
+      'Hits have animations: trip, side swipe, bonk, and a head-on slam with dizzy stars and a brief freeze-frame.',
+      'Performance: Balanced preset, adaptive resolution, 30 fps menus on Performance, a GPU check on first launch, and an FPS meter with 1% lows.',
+      'Palm Bay rebuilt: animated sea with foam and glitter, a pier, tiki bar, volleyball net, canoe, buoys and leaning palms. Cranes, water towers, igloos and adobe houses on other maps.',
+      'High preset: colour grading, speed blur and dynamic lights (runner glow, oncoming headlights).',
+      'New loading screen, a redrawn board icon and Iconsax icons in the top bar. Fixes: the NEW badge no longer covers the Updates tab, and the Career tiles line up.',
+      'Secret menu: press the key left of 1 to open or close it, even mid-run; search, per-tab counters and an Unload button to go back online.',
+      'Backend: a status page at its root, configurable CORS, and a Render blueprint.',
+    ],
+  },
+  {
     version: '2.0.0', date: '2026-11-24', title: 'Reverse Surfers',
     tags: ['major'],
     notes: [

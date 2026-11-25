@@ -4,18 +4,25 @@ export default function GameUI() {
     <>
       <canvas id="c" tabIndex={0}></canvas>
       <div id="ui">
-        <div id="loading" className="screen"><div className="load-bg" aria-hidden="true"><i style={{ left: "6%", width: 46, height: 46, animationDelay: "0s", animationDuration: "11s" }}></i><i style={{ left: "14%", width: 22, height: 22, animationDelay: "3s", animationDuration: "9s" }}></i><i style={{ left: "23%", width: 64, height: 64, animationDelay: "1s", animationDuration: "13s" }}></i><i style={{ left: "33%", width: 30, height: 30, animationDelay: "5s", animationDuration: "10s" }}></i><i style={{ left: "42%", width: 18, height: 18, animationDelay: "2s", animationDuration: "8s" }}></i><i style={{ left: "51%", width: 54, height: 54, animationDelay: "6s", animationDuration: "12s" }}></i><i style={{ left: "60%", width: 26, height: 26, animationDelay: "0.5s", animationDuration: "9s" }}></i><i style={{ left: "68%", width: 70, height: 70, animationDelay: "4s", animationDuration: "14s" }}></i><i style={{ left: "77%", width: 20, height: 20, animationDelay: "7s", animationDuration: "8s" }}></i><i style={{ left: "84%", width: 40, height: 40, animationDelay: "2.5s", animationDuration: "11s" }}></i><i style={{ left: "92%", width: 28, height: 28, animationDelay: "5.5s", animationDuration: "10s" }}></i><i style={{ left: "97%", width: 52, height: 52, animationDelay: "1.5s", animationDuration: "12s" }}></i></div><div className="box"><img className="load-logo" src="/logo.png" alt="Reverse Surfers" /><div className="load-barwrap"><div className="bar"><i id="loadBar"></i></div><span id="loadPct">0%</span></div><p id="loadTxt">Painting the walls…</p><p id="loadTip" className="tip"></p></div><div className="load-foot"><span>REVERSE SURFERS</span><span>v2.0</span></div></div>
+        <div id="loading" className="screen">
+          <div className="box">
+            <img className="load-logo" src="/logo.png" alt="Reverse Surfers" />
+            <div className="load-track" aria-hidden="true"><i id="loadBar"></i></div>
+            <div className="load-row"><span id="loadTxt">Loading fonts…</span><span id="loadPct">0%</span></div>
+            <p id="loadTip" className="tip"></p>
+          </div>
+        </div>
 
         <div id="topbar" className="hidden">
           <button className="tb-logo" id="tbLogo" aria-label="Home"><img src="/logo.png" alt="Reverse Surfers" /></button>
           <nav id="tbTabs">
-            <button className="tb-tab sel" data-tab="play">PLAY</button>
-            <button className="tb-tab" data-tab="shop">SHOP</button>
-            <button className="tb-tab" data-tab="career">CAREER</button>
-            <button className="tb-tab" data-tab="leaderboard">LEADERBOARD</button>
-            <button className="tb-tab" data-tab="events">EVENTS<i className="tb-badge" id="tbEvBadge"></i></button>
-            <button className="tb-tab" data-tab="updates">UPDATES<i className="tb-badge" id="tbUpBadge"></i></button>
-            <button className="tb-tab" data-tab="support">SUPPORT</button>
+            <button className="tb-tab sel" data-tab="play"><span className="tb-ic" data-ic="home"></span>PLAY</button>
+            <button className="tb-tab" data-tab="shop"><span className="tb-ic" data-ic="shop"></span>SHOP</button>
+            <button className="tb-tab" data-tab="career"><span className="tb-ic" data-ic="career"></span>CAREER</button>
+            <button className="tb-tab" data-tab="leaderboard"><span className="tb-ic" data-ic="ranking"></span>LEADERBOARD</button>
+            <button className="tb-tab" data-tab="events"><span className="tb-ic" data-ic="events"></span>EVENTS<i className="tb-badge" id="tbEvBadge"></i></button>
+            <button className="tb-tab" data-tab="updates"><span className="tb-ic" data-ic="updates"></span>UPDATES<i className="tb-badge" id="tbUpBadge"></i></button>
+            <button className="tb-tab" data-tab="support"><span className="tb-ic" data-ic="support"></span>SUPPORT</button>
           </nav>
           <div className="tb-right">
             <span className="pill online" id="mOnline"><span className="dotlive off"></span>Offline</span>
@@ -63,7 +70,7 @@ export default function GameUI() {
           <div id="h-count"></div>
           <div id="h-say"></div>
           <div id="h-missions" className="card"></div>
-          <button className="btn" id="h-boardBtn" title="Hoverboard (B)"><svg viewBox="0 0 64 64"><rect x="6" y="26" width="52" height="14" rx="7" fill="#fff"/><rect x="12" y="30" width="40" height="5" rx="2.5" fill="#1b9bd6"/><circle cx="18" cy="48" r="3" fill="#ffd23f"/><circle cx="32" cy="52" r="3" fill="#ffd23f"/><circle cx="46" cy="48" r="3" fill="#ffd23f"/></svg><small id="hBoards">0</small></button>
+          <button className="btn" id="h-boardBtn" title="Hoverboard (B)"><span id="hBoardIc" className="board-ic"></span><small id="hBoards">0</small></button>
           <div id="h-toast" className=" ink"></div>
           <div id="h-tut" className=" ink"></div>
           <div id="h-cheat" className="hidden"></div>
@@ -131,6 +138,7 @@ export default function GameUI() {
         <div id="settings" className="screen modal hidden"><div className="panel" style={{ width: 'min(94vw,780px)' }}><h2 className="ink">SETTINGS</h2>
           <div className="tabs" id="setTabs"></div>
           <div id="setBody"></div>
+          <p className="sec-hint" id="setVer"></p>
           <div className="row"><button className="btn purple sm hidden" id="btnSecret">SECRET MENU</button><button className="btn red sm" id="btnReset">RESET PROGRESS</button><button className="btn" id="btnSetClose">BACK</button></div></div></div>
 
         <div id="dlg" className="screen modal hidden" role="dialog" aria-modal="true"><div className="panel dlg-panel">
@@ -142,9 +150,10 @@ export default function GameUI() {
 
         <div id="secret" className="screen modal hidden"><div className="panel" style={{ width: 'min(96vw,860px)' }}><h2 className="ink">SPRAY SECRET MENU</h2>
           <p className="stage-note" id="secNote"></p>
+          <input id="secSearch" className="sec-search" type="search" placeholder="Search options" autoComplete="off" spellCheck={false} />
           <div className="tabs" id="secTabs"></div>
           <div id="secBody"></div>
-          <div className="row"><button className="btn sm" id="secReset">RESET ALL</button><button className="btn go" id="secClose">CLOSE</button></div></div></div>
+          <div className="row"><button className="btn sm" id="secReset">RESET ALL</button><button className="btn sm green hidden" id="secUnload">UNLOAD - PLAY ONLINE</button><span className="sec-hint"><kbd>²</kbd> open / close &nbsp; <kbd>Esc</kbd> close</span><button className="btn go" id="secClose">CLOSE</button></div></div></div>
         <div id="duelhud" className="hidden">
           <div id="dTop">
             <div className="dside"><b id="dMeName">YOU</b><div className="dbar"><i id="dMeBar"></i></div></div>

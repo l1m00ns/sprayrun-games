@@ -16,6 +16,7 @@ class Points {
     this.grav = new Float32Array(max);
     this.base = new Float32Array(max * 3);
     this.n = 0;
+    this.keep = 1; // particle budget: share of emissions that are actually spawned (graphics preset)
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
@@ -27,6 +28,7 @@ class Points {
     this.geo = g;
   }
   emit(x, y, z, vx, vy, vz, life, r, g, b, grav = 0) {
+    if (this.keep < 1 && Math.random() > this.keep) return;
     const i = this.n < this.max ? this.n++ : Math.floor(Math.random() * this.max);
     const k = i * 3;
     this.pos[k] = x; this.pos[k + 1] = y; this.pos[k + 2] = z;
@@ -60,6 +62,7 @@ class Points {
 }
 
 export class FX {
+  setBudget(k) { for (const p of [this.sparks, this.dust, this.smoke]) p.keep = k; }
   constructor(scene) {
     const dot = T.makeSoftDot();
     this.sparks = new Points(scene, 400, 0.2, THREE.AdditiveBlending, dot);

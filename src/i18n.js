@@ -20,10 +20,19 @@ const FR = {
   'NEW BADGE: GOLD EAGLE!': 'NOUVEAU BADGE : GOLD EAGLE !', 'VICTORY': 'VICTOIRE', 'DEFEAT': 'DÉFAITE', 'DRAW': 'ÉGALITÉ', 'FIGHT!': 'COMBAT !', 'Back to the track.': 'Retour sur la piste.',
   'Nobody went down. The race goes on.': 'Personne n’est tombé. La course continue.', 'First blood!': 'Premier sang !', 'You win the Gold Rush!': 'Tu gagnes la Gold Rush !',
   'Double-tap Space to launch your hoverboard.': 'Double-appui sur Espace pour lancer ton hoverboard.', 'Trains with a flashing triangle are coming at you - switch lanes!': 'Un train avec un triangle clignotant arrive : change de voie !',
-  'Ramps lead onto train roofs: coins are waiting up there.': 'Les rampes mènent sur les toits : des pièces t’y attendent.', 'Roll under the striped bars, jump the red barriers.': 'Roule sous les barres rayées, saute les barrières rouges.',
+  'Trains are solid walls: change lanes, or fly over them with the Jetpack.': 'Les trains sont des murs : change de voie, ou survole-les avec le Jetpack.', 'Roll under the striped bars, jump the red barriers.': 'Roule sous les barres rayées, saute les barrières rouges.',
   'In No Coin mode, every coin is a trap.': 'En mode Sans pièce, chaque pièce est un piège.', 'Ranked matches pair you with runners at your level.': 'Le classé t’oppose à des coureurs de ton niveau.',
   'Mystery chests hide coins, hoverboards and power-ups.': 'Les coffres mystère cachent pièces, hoverboards et bonus.', 'Each map has its own weather and surprises.': 'Chaque carte a sa météo et ses surprises.',
   'Painting the walls…': 'On peint les murs…', 'Loading fonts…': 'Chargement des polices…', 'Laying the tracks…': 'On pose les rails…', 'Waking up the crew…': 'On réveille l’équipe…', 'Ready!': 'Prêt !',
+  'High (bloom, outlines, shadows)': 'Élevé (bloom, contours, ombres)', 'Balanced (shadows, no post-processing)': 'Équilibré (ombres, sans post-traitement)', 'Performance (fastest)': 'Performance (le plus rapide)',
+  'Picked for your graphics card on first launch. Performance also starts without anti-aliasing after a reload.': 'Choisi selon ta carte graphique au premier lancement. Performance démarre aussi sans anticrénelage après un rechargement.',
+  'Adaptive resolution': 'Résolution adaptative', 'Lowers the resolution when the frame rate drops and raises it back when there is room. Never goes above the scale you chose.': 'Baisse la résolution quand la fluidité chute et la remonte quand il y a de la marge. Ne dépasse jamais l’échelle choisie.',
+  'Shadows on, no post-processing.': 'Ombres actives, sans post-traitement.',
+  'UNLOAD - PLAY ONLINE': 'DÉCHARGER - JOUER EN LIGNE', 'Unload: turn everything off and go back online': 'Décharger : tout désactiver et retourner en ligne', 'Search options': 'Rechercher une option', 'No option matches.': 'Aucune option ne correspond.',
+  'Unloaded - online play and ranked are available again': 'Déchargé - le jeu en ligne et le classé sont de nouveau disponibles', 'Unloaded - this run stays practice, start a new one to play online': 'Déchargé - cette partie reste un entraînement, lance-en une nouvelle pour jouer en ligne',
+  'Practice session: nothing you do now is banked, submitted or ranked, and online play is blocked.': 'Session d’entraînement : rien n’est enregistré, envoyé ni classé, et le jeu en ligne est bloqué.',
+  'Visual options are free. Any option that changes gameplay turns the run into a practice run: nothing banked, submitted or ranked.': 'Les options visuelles sont libres. Toute option qui change le jeu transforme la partie en entraînement : rien n’est enregistré, envoyé ni classé.',
+  'Paused - press P or tap Resume': 'Pause - appuie sur P ou touche Reprendre',
   // ---- online / lobby
   'Your name': 'Ton nom', 'Room code (optional)': 'Code de salle (optionnel)', 'RANKED': 'CLASSÉ', 'QUICK MATCH': 'PARTIE RAPIDE', 'CREATE ROOM': 'CRÉER UNE SALLE', 'JOIN CODE': 'REJOINDRE',
   'CANCEL': 'ANNULER', 'READY': 'PRÊT', 'NOT READY': 'PAS PRÊT', 'START RACE': 'LANCER LA COURSE', 'LEAVE': 'QUITTER', 'BACK': 'RETOUR', 'EDIT': 'MODIFIER', 'Map': 'Carte', 'BACK TO LOBBY': 'RETOUR AU SALON',
@@ -117,6 +126,9 @@ const FR = {
 
 // Patterns for strings that embed numbers or names.
 const PATTERNS = [
+  [/^Collect (\d+) coins$/, (m) => `Ramasse ${m[1]} pièces`], [/^Run (\d+) meters$/, (m) => `Cours ${m[1]} mètres`], [/^Jump (\d+) times$/, (m) => `Saute ${m[1]} fois`], [/^Roll (\d+) times$/, (m) => `Roule ${m[1]} fois`],
+  [/^Collect (\d+) power-ups$/, (m) => `Ramasse ${m[1]} bonus`], [/^Change lanes (\d+) times$/, (m) => `Change de voie ${m[1]} fois`], [/^Use a hoverboard (\d+) times?$/, (m) => `Utilise un hoverboard ${m[1]} fois`],
+  [/^Score (\d+) points in one run$/, (m) => `Marque ${m[1]} points en une partie`], [/^Fly with the jetpack (\d+) times?$/, (m) => `Vole avec le jetpack ${m[1]} fois`],
   [/^Level (\d+)$/, (m) => `Niveau ${m[1]}`], [/^LV (\d+)$/, (m) => `NIV ${m[1]}`], [/^SCORE x(\d+)$/, (m) => `SCORE x${m[1]}`], [/^LEVEL UP! Score x(\d+)$/, (m) => `NIVEAU SUPÉRIEUR ! Score x${m[1]}`],
   [/^v([\d.]+) - (.+)$/, (m) => `v${m[1]} - ${m[2]}`], [/^(\d+) players$/, (m) => `${m[1]} joueurs`], [/^(\d+) achievements?$/, (m) => `${m[1]} succès`], [/^Achievements (\d+)\/(\d+)$/, (m) => `Succès ${m[1]}/${m[2]}`],
   [/^Next door in (.+)$/, (m) => `Prochaine porte dans ${m[1]}`], [/^Opens Dec (\d+)$/, (m) => `Ouvre le ${m[1]} déc.`], [/^(\d+) coins$/, (m) => `${m[1]} pièces`], [/^(\d+) coins \+ 1 hoverboard$/, (m) => `${m[1]} pièces + 1 hoverboard`], [/^(\d+) coins \+ (\d+) hoverboards$/, (m) => `${m[1]} pièces + ${m[2]} hoverboards`],

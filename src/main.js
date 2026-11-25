@@ -3,21 +3,27 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { GradeShader } from './post.js';
 import * as C from './consts.js';
 import { clamp, damp, lerp, rand, fmt, easeInOut, easeOutCubic } from './util.js';
 import { save, persist, resetSave, setPersistHook } from './save.js';
 import { initHub } from './hub.js';
 import { dressed } from './cosmetics.js';
+import { boardSVG } from './icons.js';
+import { GAME_FULL_VERSION } from './version.js';
+import { fillIcons } from './iconsax.js';
 import { createDuel } from './duel.js';
 import { setLang, getLang, detectLang } from './i18n.js';
 import { createOnboarding, openLanguagePicker } from './onboarding.js';
-import { cheats, GROUPS as CHEAT_GROUPS, tainted, activeCount, konamiListener, renderGroup as renderCheatGroup, unlocked as secretUnlocked, setUnlocked as setSecretUnlocked, resetAll as resetCheats } from './secret.js';
+import { cheats, GROUPS as CHEAT_GROUPS, tainted, activeCount, groupActive, konamiListener, renderGroup as renderCheatGroup, unlocked as secretUnlocked, setUnlocked as setSecretUnlocked, resetAll as resetCheats } from './secret.js';
 import { SCHEMA as SETTINGS, defaults as settingDefaults, renderTab as renderSettingsTab } from './settings.js';
 import { Sky, themeAt } from './sky.js';
 import { World, initWorldAssets, setNight, tickWorldAssets } from './world.js';
 import { OutlinePass } from './outline.js';
 import { Weather } from './weather.js';
 import { Birds } from './critters.js';
+import { presetOf, gpuName, detectTier, AdaptiveRes, FrameStats } from './perf.js';
 import { BIOMES, BIOME_ORDER } from './biomes.js';
 import { bend, applyBend } from './bend.js';
 import { Net } from './net.js';
@@ -35,8 +41,18 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('c');
 
 // ------------------------------------------------------------------ renderer
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+// Anti-aliasing (MSAA) is fixed when the context is created: the Performance preset starts without it.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: (save.settings && save.settings.quality) !== 'low', powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const gpuTier = detectTier(gpuName(renderer.getContext()), { mobile: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), cores: navigator.hardwareConcurrency || 8, memory: navigator.deviceMemory || 8 });
+const adapt = new AdaptiveRes({ min: 0.55 });
+const frameStats = new FrameStats();
+let autoK = 1, pixelExtra = 1; // adaptive-resolution multiplier, cheat-menu multiplier (retro look)
+function applyPixelRatio() {
+  const s = save.settings, q = presetOf(s.quality);
+  renderer.setPixelRatio(Math.max(0.3, Math.min(window.devicePixelRatio || 1, q.prCap) * (s.renderScale || 1) * autoK * pixelExtra));
+  resize();
+}
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.NeutralToneMapping;
@@ -65,7 +81,12 @@ fill.position.set(9, 7, 5);
 fill.target.position.set(-2, 2, -10);
 scene.add(fill, fill.target);
 
-let composer = null, bloom = null, outline = null;
+// two dynamic point lights (High preset): a warm glow that follows the runner, and the headlight of the nearest oncoming train
+const runnerLight = new THREE.PointLight(0xffc98a, 0, 15, 2);
+const trainLight = new THREE.PointLight(0xfff2b0, 0, 34, 2);
+runnerLight.visible = trainLight.visible = false;
+scene.add(runnerLight, trainLight);
+let composer = null, bloom = null, outline = null, grade = null, gradeSpeed = 0;
 function setupComposer() {
   const w = window.innerWidth, h = window.innerHeight;
   const pr = renderer.getPixelRatio();
@@ -79,6 +100,8 @@ function setupComposer() {
   composer.addPass(outline);
   bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.35, 0.55, 0.92);
   composer.addPass(bloom);
+  grade = new ShaderPass(GradeShader);
+  composer.addPass(grade);
   composer.addPass(new OutputPass());
 }
 // Apply one setting (or all of them when key is undefined). Cheap, safe to call any time.
@@ -92,21 +115,32 @@ function applySettings(key) {
   if (all || key === 'showTimer') $('hTime').style.display = s.showTimer === false ? 'none' : '';
   if (all || key === 'uiScale') H.style.setProperty('--ui-scale', String(s.uiScale || 1));
   if (all || key === 'seasonal') hubUI.refreshChrome && hubUI.refreshChrome();
-  if (all || key === 'renderScale') { renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * (s.renderScale || 1)); resize(); }
+  if (all || key === 'renderScale') applyPixelRatio();
+  if (key === 'autoRes' || (all && s.autoRes === false)) { autoK = 1; adapt.reset(); applyPixelRatio(); }
   if (all || key === 'music' || key === 'sfx') audio.setVolumes(s.music, s.sfx);
   if (all || key === 'quality') applyQuality();
   if (all || key === 'outline') applyOutline();
   if (all || key === 'bloom' || key === 'reduceMotion') { if (bloom) bloom.enabled = s.bloom !== false && !s.reduceMotion; }
-  if (all || key === 'shadows') { const on = s.quality === 'high' && s.shadows !== false; renderer.shadowMap.enabled = on; sun.castShadow = on; }
+  if (all || key === 'shadows') { const on = presetOf(s.quality).shadows && s.shadows !== false; renderer.shadowMap.enabled = on; sun.castShadow = on; }
   if (all || key === 'showFps') $('fpsMeter').classList.toggle('hidden', !s.showFps);
 }
 function applyOutline() { if (outline) outline.enabled = save.settings.outline !== false; }
 function applyQuality() {
-  const high = save.settings.quality === 'high';
-  renderer.shadowMap.enabled = high && save.settings.shadows !== false;
-  sun.castShadow = high && save.settings.shadows !== false;
-  if (high && !composer) setupComposer();
+  const q = presetOf(save.settings.quality);
+  const shadowsOn = q.shadows && save.settings.shadows !== false;
+  renderer.shadowMap.enabled = shadowsOn;
+  sun.castShadow = shadowsOn;
+  if (sun.shadow.mapSize.x !== q.shadowRes) { // a new shadow-map size only takes effect once the old target is released
+    sun.shadow.mapSize.set(q.shadowRes, q.shadowRes);
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  }
+  if (q.post && !composer) setupComposer();
+  runnerLight.visible = trainLight.visible = !!q.post; // lights change the shader: only on High
+  if (fx) fx.setBudget(q.particles);
+  if (weather) weather.budget = q.weather;
+  if (birds) birds.mesh.visible = q.birds;
   applyOutline();
+  autoK = 1; adapt.reset(); applyPixelRatio(); // the preset changes the pixel-ratio cap: start from the full resolution again
   scene.traverse((o) => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach((m) => { m.needsUpdate = true; }); } });
 }
 function resize() {
@@ -167,7 +201,7 @@ function loadFonts() {
 }
 
 function setLoad(p, txt) {
-  $('loadBar').style.width = `${p * 100}%`;
+  $('loadBar').style.clipPath = `inset(0 ${(1 - p) * 100}% 0 0)`;
   $('loadPct').textContent = `${Math.round(p * 100)}%`;
   if (txt) $('loadTxt').textContent = txt;
 }
@@ -179,7 +213,7 @@ function buildPlayer() {
   scene.add(player.root);
 }
 
-const TIPS = ['Double-tap Space to launch your hoverboard.', 'Trains with a flashing triangle are coming at you - switch lanes!', 'Ramps lead onto train roofs: coins are waiting up there.',
+const TIPS = ['Double-tap Space to launch your hoverboard.', 'Trains with a flashing triangle are coming at you - switch lanes!', 'Trains are solid walls: change lanes, or fly over them with the Jetpack.',
   'Roll under the striped bars, jump the red barriers.', 'In No Coin mode, every coin is a trap.', 'Ranked matches pair you with runners at your level.', 'Mystery chests hide coins, hoverboards and power-ups.', 'Each map has its own weather and surprises.'];
 async function boot() {
   let tipI = Math.floor(Math.random() * TIPS.length);
@@ -213,6 +247,7 @@ async function boot() {
   guard.root.visible = false;
   dog.root.visible = false;
   scene.add(guard.root, dog.root);
+  if (!save.onboarded) save.settings.quality = gpuTier.tier; // first launch: pick the preset that suits this graphics card (the welcome flow lets the player change it)
   applyQuality();
   resize();
   setLoad(0.95, 'Ready!');
@@ -317,7 +352,7 @@ function powerDuration(type) {
 }
 
 function resetRun() {
-  Object.assign(P, { lane: 1, target: 1, prev: 1, x: 0, y: 0, vy: 0, grounded: true, coyote: 0, vx: 0, rollT: 0, rolling: false, rollQueued: false, h: C.PLAYER_H, onBoard: false, boardT: 0, inv: 0, bump: 0, stumbleT: 0, jetY: 0, ground: 0, groundSmooth: 0, jetting: false, jetLeft: 0, jetCoinT: 0, jumpBuffer: 0, laneFrom: 0, laneT: 1, laneDur: 0.27 });
+  Object.assign(P, { hitKind: null, hitSide: 1, lane: 1, target: 1, prev: 1, x: 0, y: 0, vy: 0, grounded: true, coyote: 0, vx: 0, rollT: 0, rolling: false, rollQueued: false, h: C.PLAYER_H, onBoard: false, boardT: 0, inv: 0, bump: 0, stumbleT: 0, jetY: 0, ground: 0, groundSmooth: 0, jetting: false, jetLeft: 0, jetCoinT: 0, jumpBuffer: 0, laneFrom: 0, laneT: 1, laneDur: 0.27 });
   for (const k of Object.keys(pw)) { pw[k] = 0; }
   shownScore = 0;
   run.in = { n: 0, fast: 0, last: 0 };
@@ -438,7 +473,7 @@ function activatePower(type) {
   const dur = powerDuration(type);
   pw[type] = dur; pwMax[type] = dur;
   toast(C.POWERUPS[type].name.toUpperCase() + '!');
-  if (type === 'jetpack') { P.jetting = true; P.jetCoinT = 0; P.jetLeft = dur; P.landAssist = false; }
+  if (type === 'jetpack') { P.jetting = true; P.jetCoinT = 0; P.jetLeft = dur; P.landAssist = false; report('jetpack', 1); }
   if (type === 'mult') { $('hDbl').style.display = ''; }
   renderPowers();
 }
@@ -501,12 +536,12 @@ function renderPowers() {
 }
 
 function stumble(hit) {
-  if (P.onBoard) { breakBoard(); return; }
+  if (P.onBoard) { breakBoard(hit); return; }
   if (G.active) { die('caught'); return; }
   // first stumble: the guard appears
   G.active = true; G.t = 0; G.z = 9; G.dogZ = 6; G.shown = true;
   guard.root.visible = true; dog.root.visible = true;
-  P.stumbleT = 0.5; P.bump = 0.5;
+  P.stumbleT = 0.5; P.bump = 0.5; hitStop = 0.05;
   P.inv = 0.25;
   shake = Math.max(shake, 0.45);
   run.speed *= 0.82;
@@ -515,7 +550,10 @@ function stumble(hit) {
   $('h-guard').classList.add('on');
 }
 
-function breakBoard() {
+function breakBoard(hit) {
+  // the board takes the hit AND the obstacle is cleared: otherwise the runner would ride through the inside of a train for 2.4 s
+  if (hit && hit.solid) world.removeSolid(hit.solid);
+  world.clearLane(P.x, 30);
   P.onBoard = false; P.boardT = 0; P.inv = 2.4; P.bump = 0.6;
   shake = Math.max(shake, 0.6); flash = 1;
   audio.sfx.boardBreak();
@@ -524,8 +562,11 @@ function breakBoard() {
   updateHudStatic();
 }
 
+let hitStop = 0; // seconds of near-freeze at the moment of impact
 function die(reason) {
   if (state !== 'playing') return;
+  run.deathKind = reason === 'crash' && P.hitKind === 'slam' ? 'slam' : 'fall';
+  if (run.deathKind === 'slam') hitStop = 0.09;
   // Gold Rush: the duel happens at least once per game. A crash before the first one warps into the arena instead.
   if (run.ltm && !run.duelCount && !run.warping && !mp.active) { run.deathSaved = true; P.inv = 6; world.clearAhead(60); toast('GOLD RUSH!'); beginWarp(false); return; }
   if (P.secondLife) { P.secondLife = false; P.inv = Math.max(P.inv, 3.2); shake = 1; flash = 1; world.clearAhead(40); audio.sfx.power(); toast('SECOND LIFE!'); return; }
@@ -556,10 +597,12 @@ function describeAhead() {
 function handleHit(hit) {
   if (P.inv > 0) return;
   if (godNow()) return;
+  P.hitKind = hit.lethal ? 'slam' : hit.front ? (hit.kind === 'over' ? 'bonk' : 'trip') : 'side'; // picks the animation
+  P.hitSide = Math.sign((hit.solid ? hit.solid.x : P.x) - P.x) || 1;
   if (cheats.noStumble && !hit.lethal) return;
   if (hit.lethal || (!hit.front && false)) run.deathInfo = `${hit.kind} lane=${P.target} x=${P.x.toFixed(2)} y=${P.y.toFixed(2)} :: ${describeAhead()}`;
   if (hit.lethal) {
-    if (P.onBoard) breakBoard(); else die('crash');
+    if (P.onBoard) breakBoard(hit); else die('crash');
   } else {
     if (!hit.front && P.bump > 0) return;
     stumble(hit);
@@ -576,71 +619,114 @@ function report(ev, n) {
 }
 
 // ------------------------------------------------------------------ bot (testing / demo)
-// Bot / assist planner. Scans every lane ahead (solids, moving trains, coins), scores the three lanes by runway,
-// hazards, coins and switching cost, then acts with exact timing. `pro` = full autopilot; otherwise only the
+// Bot / assist planner. Builds a 3-lane x N-metre grid of what is ahead (walls, barriers, coins, power-ups, oncoming trains projected
+// into the runner's own progress), plans the cheapest path with dynamic programming, and acts with exact timing. `pro` = full autopilot; otherwise only the
 // requested assists (jump & roll, or lane dodging) run.
 function botThink(opt = {}) {
   const speed = run.speed;
   const style = opt.pro ? (cheats.botStyle || 'pro') : 'safe';
   const lag = opt.pro ? (cheats.botReact / 1000) * speed : 0; // reaction delay = distance travelled before it notices
-  const look = speed * (style === 'safe' ? 1.05 : 0.9) + 8;
-  const info = [0, 1, 2].map(() => ({ block: Infinity, jump: Infinity, roll: Infinity }));
+  const look = Math.min(120, speed * (style === 'safe' ? 1.6 : 1.3) + 14);
+  const N = Math.ceil(look);
+  // ---- 1. the road ahead as a grid: 3 lanes x N metres. wall = lethal solid, low/over = barriers, val = coins and power-ups
+  const mk = (T = Uint8Array) => [0, 1, 2].map(() => new T(N + 2));
+  const wall = mk(), low = mk(), over = mk(), val = mk(Float32Array);
+  const fill = (arr, a, b, v = 1) => { for (let i = Math.max(0, Math.floor(a)); i <= Math.min(N + 1, Math.ceil(b)); i++) arr[i] = v; };
   for (const seg of world.segs) {
     for (const s of seg.solids) {
-      const off = s.off || 0;
-      let zf = -(seg.z + s.lz1 + off); // distance to front face
-      const zb = -(seg.z + s.lz0 + off);
-      if (s.vz && !s.started && s.trigger) zf -= (s.vz * Math.min(zf, s.trigger)) / (speed + s.vz); // it will rush at us once triggered
-      else if (s.vz && s.started) zf = (zf * speed) / (speed + s.vz);
-      if (zb < -0.5 || zf > look) continue;
+      const off = s.off || 0, len = s.lz1 - s.lz0;
+      let zf = -(seg.z + s.lz1 + off); // distance to the front face
+      let ratio = 1;
+      if (s.vz) { // an oncoming train: in the runner's own progress it arrives sooner and covers less road
+        ratio = speed / (speed + s.vz);
+        zf = s.started ? zf * ratio : zf - (s.vz * Math.min(zf, s.trigger || 38)) / (speed + s.vz);
+      }
+      const d0 = zf - 0.35 - lag, d1 = zf + len * ratio + 0.35 - lag;
+      if (d1 < -0.5 || d0 > N + 1) continue;
       const lane = Math.round(s.x / C.LANE_W) + 1;
-      const d = Math.max(0, zf - 0.3 - lag);
-      const i = info[lane];
-      if (s.kind === 'train' || s.kind === 'container' || s.kind === 'ramp') i.block = Math.min(i.block, d);
-      else if (s.kind === 'low') i.jump = Math.min(i.jump, d);
-      else if (s.kind === 'over') i.roll = Math.min(i.roll, d);
+      if (lane < 0 || lane > 2) continue;
+      if (s.kind === 'train' || s.kind === 'container' || s.kind === 'ramp') fill(wall[lane], d0, d1);
+      else if (s.kind === 'low') fill(low[lane], d0 - 0.2, d0 + 0.8);
+      else if (s.kind === 'over') fill(over[lane], d0 - 0.4, d0 + 1.1);
     }
   }
-  const coinsIn = [0, 0, 0];
+  const wCoin = style === 'coins' ? 0.9 : style === 'safe' ? 0.12 : 0.32;
   for (const c of world.coins.list) {
-    const dz = -c.z;
-    if (dz < -0.5 || dz > look * 1.3) continue;
-    const l = Math.round(c.x / C.LANE_W) + 1;
-    if (l < 0 || l > 2) continue;
-    if (run.mode === 'nocoin') info[l].block = Math.min(info[l].block, Math.max(0, dz - 1)); // coins are traps here
-    else coinsIn[l] += (c.v || 1) * (1 - (dz / (look * 1.3)) * 0.5);
+    const dz = -c.z - lag, l = Math.round(c.x / C.LANE_W) + 1;
+    if (dz < -0.5 || dz > N || l < 0 || l > 2) continue;
+    if (run.mode === 'nocoin') fill(wall[l], dz - 0.8, dz + 0.8); // every coin is a trap here
+    else if (c.y < 3) val[l][Math.round(dz)] += (c.v || 1) * wCoin;
   }
+  if (run.mode !== 'nocoin') {
+    for (const it of world.items.list) {
+      const dz = -it.z - lag, l = Math.round(it.x / C.LANE_W) + 1;
+      if (dz < 0 || dz > N || l < 0 || l > 2) continue;
+      val[l][Math.round(dz)] += (it.type === 'box' ? 4 : 7) * (style === 'safe' ? 0.5 : 1); // power-ups are worth a detour
+    }
+  }
+  // ---- 2. plan: dynamic programming over (metre, lane). Staying costs the road's hazards, changing lane costs a little and needs both
+  // lanes clear while the runner is between them. Switches are pushed as late as possible (ties prefer later), so the runner moves
+  // with purpose instead of zig-zagging.
+  const BIG = 400, SW = style === 'safe' ? 1.8 : style === 'coins' ? 0.5 : 0.8;
+  const w = Math.max(2, Math.ceil(speed * (snappy() ? 0.14 : 0.29)) + 1);
+  const cell = (l, i) => (wall[l][i] ? BIG : 0) + (low[l][i] || over[l][i] ? 1.4 : 0) - val[l][i];
+  const INF = 1e9, W = N + 1, lead = Math.ceil(speed * 0.3);
+  const dp = [0, 1, 2].map(() => new Float32Array(W + 1).fill(INF));
+  const from = [0, 1, 2].map(() => new Int16Array((W + 1) * 2).fill(-1)); // [prevLane, prevStep]
   const cur = P.target;
-  const wCoin = style === 'coins' ? 5 : style === 'safe' ? 0.5 : 2;
-  const crossOk = (from, to) => { // can we pass through the lanes in between without hitting something at the crossing moment?
-    const dir = Math.sign(to - from);
-    for (let l = from + dir; l !== to + dir; l += dir) if (info[l].block < speed * (snappy() ? 0.14 : 0.3) + 1.2) return false; // time spent crossing that lane
-    return true;
-  };
-  let best = cur, bestScore = -1e9;
-  for (const l of [0, 1, 2]) {
-    if (l !== cur && !crossOk(cur, l)) continue;
-    const free = Math.min(info[l].block, look * 1.5);
-    const hazard = (info[l].jump < look * 0.6 ? 2.5 : 0) + (info[l].roll < look * 0.6 ? 2.5 : 0);
-    const coinBonus = free >= look * 0.85 ? coinsIn[l] * wCoin : Math.min(coinsIn[l] * wCoin, 3); // never trade a clear road for coins
-    const sc = free + coinBonus - hazard - Math.abs(l - cur) * (style === 'safe' ? 3 : 1.2) + (l === cur ? 1.5 : 0); // hysteresis
-    if (sc > bestScore) { bestScore = sc; best = l; }
+  dp[cur][0] = 0;
+  for (let i = 0; i < N; i++) {
+    for (let l = 0; l < 3; l++) {
+      const c = dp[l][i];
+      if (c >= INF) continue;
+      const stay = c + cell(l, i + 1);
+      if (stay < dp[l][i + 1]) { dp[l][i + 1] = stay; from[l][(i + 1) * 2] = l; from[l][(i + 1) * 2 + 1] = i; }
+      if (i + w > N) continue;
+      for (const l2 of [l - 1, l + 1]) {
+        if (l2 < 0 || l2 > 2) continue;
+        let cost = SW + 0.003 * (N - i), bad = 0;
+        for (let j = i; j <= i + w; j++) { // the runner is between the two lanes for the whole window, starting now
+          bad += Math.max(wall[l][j] ? BIG : 0, wall[l2][j] ? BIG : 0);
+          if (low[l][j] || over[l][j] || low[l2][j] || over[l2][j]) cost += 3; // a barrier while changing lane: possible but risky
+        }
+        for (let j = i + w + 1; j <= Math.min(N, i + w + lead); j++) if (low[l2][j] || over[l2][j]) { cost += 7; break; } // no time left to jump or roll after arriving
+        cost += bad - val[l2][Math.min(N, i + w)];
+        const t = c + cost;
+        if (t < dp[l2][i + w]) { dp[l2][i + w] = t; from[l2][(i + w) * 2] = l; from[l2][(i + w) * 2 + 1] = i; }
+      }
+    }
   }
+  let endLane = cur;
+  for (let l = 0; l < 3; l++) if (dp[l][N] < dp[endLane][N] - 1e-6 || (dp[l][N] === dp[endLane][N] && l === cur)) endLane = l;
+  // walk the best path back and keep its FIRST lane change
+  let l = endLane, i = N, first = null;
+  while (i > 0 && l >= 0) {
+    const pl = from[l][i * 2], pi = from[l][i * 2 + 1];
+    if (pl < 0) break;
+    if (pl !== l) first = { at: pi, to: l, from: pl };
+    l = pl; i = pi;
+  }
+  const trouble = dp[endLane][N] >= BIG * 0.5; // even the best path runs into something
+  const nearWall = (lane) => { for (let k = 0; k <= N; k++) if (wall[lane][k]) return k; return Infinity; };
   const doLanes = opt.pro || opt.lanes, doMoves = opt.pro || opt.assist;
-  if (doLanes && best !== cur && (info[cur].block < look * 1.6 || (coinsIn[best] > coinsIn[cur] + 1.5 && info[best].block > look)) && botCd <= 0) {
-    pushAction(best < cur ? 'left' : 'right');
-    botCd = 0.06;
+  const act = 0.6; // the plan already accounts for the crossing window: change lane exactly when the path says so
+  if (doLanes && first && first.at <= act && botCd <= 0) {
+    pushAction(first.to < cur ? 'left' : 'right');
+    botCd = 0.05;
     return;
   }
+  // ---- 3. jump / roll for barriers in the lane we are in (or about to be in)
   if (doMoves) {
-    const reach = speed * (P.onBoard ? 0.2 : 0.27);
-    if (info[cur].jump < reach && P.grounded && !P.rolling) pushAction('jump');
-    else if (info[cur].roll < speed * 0.22 && P.grounded && !P.rolling) pushAction('roll');
+    const lane = P.target, reach = speed * (P.onBoard ? 0.22 : 0.3);
+    let nextLow = Infinity, nextOver = Infinity;
+    for (let k = 0; k <= N; k++) { if (nextLow === Infinity && low[lane][k]) nextLow = k + 0.3; if (nextOver === Infinity && over[lane][k]) nextOver = k + 0.4; if (nextLow < Infinity && nextOver < Infinity) break; }
+    if (nextLow < reach && nextLow > 0.2 && P.grounded) pushAction('jump'); // a jump cancels a roll in progress
+    else if (nextOver < speed * 0.13 + 0.4 && nextOver > 0.2 && P.grounded && (!P.rolling || P.rollT < nextOver / speed + 0.25)) pushAction('roll'); // start late (the roll lasts 0.6 s), and renew it for the next bar
+    else if (!P.grounded && !P.jetting && nextOver < speed * 0.5 + 2 && nextOver > 0.2 && botCd <= 0) { pushAction('roll'); botCd = 0.3; } // in the air with a bar coming: dive, then roll on landing
     else if (style === 'show' && !P.grounded && P.y > 1.2 && P.vy < 1 && botCd <= 0) { pushAction('roll'); botCd = 0.5; } // jump-roll dive combo
   }
-  // last resort: every reachable lane is about to be blocked -> burn a hoverboard instead of crashing
-  const escape = [cur - 1, cur + 1].some((l) => l >= 0 && l <= 2 && info[l].block > speed * 0.3); // a neighbouring lane that is still open
-  if (opt.pro && cheats.botBoards && !P.onBoard && (save.boards > 0 || cheats.infBoards) && info[cur].block < speed * 0.2 && !escape) pushAction('board');
+  // ---- 4. nothing works: burn a hoverboard instead of crashing (and only when the crash is really about to happen)
+  if (opt.pro && cheats.botBoards && !P.onBoard && (save.boards > 0 || cheats.infBoards) && trouble && nearWall(P.target) < speed * 0.22 + 0.8) pushAction('board');
 }
 let botCd = 0;
 
@@ -1126,7 +1212,16 @@ function setupUI() {
   $('btnSetClose').onclick = () => { audio.sfx.click(); show('settings', false); persist(); };
   $('btnSecret').classList.toggle('hidden', !secretUnlocked());
   $('btnSecret').onclick = () => { audio.sfx.click(); show('settings', false); drawSecret(); show('secret', true); };
-  $('secClose').onclick = () => { audio.sfx.click(); show('secret', false); applyCheatVisuals(); };
+  $('secClose').onclick = closeSecret;
+  $('secUnload').onclick = () => { audio.sfx.click(); unloadCheats(); };
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (e.key === 'Escape' && !$('secret').classList.contains('hidden')) { e.preventDefault(); e.stopPropagation(); closeSecret(); return; }
+    if (e.key !== '²' && e.code !== 'Backquote') return;
+    const t = e.target, tag = t && t.tagName;
+    if (tag === 'TEXTAREA' || (tag === 'INPUT' && !['checkbox', 'range'].includes(t.type) && t.id !== 'secSearch')) return;
+    e.preventDefault(); toggleSecret();
+  }, true);
   $('secReset').onclick = () => { audio.sfx.click(); resetCheats(); applyCheatVisuals(); drawSecret(); };
   konamiListener(() => { const tg = document.activeElement && document.activeElement.tagName; if (tg === 'INPUT' || tg === 'TEXTAREA') return; openSecret(true); });
   $('btnReset').onclick = async () => { if (await confirmDlg('This erases coins, characters, upgrades and records stored on this device.', { danger: true, yes: 'ERASE' })) { resetSave(); location.reload(); } };
@@ -1143,6 +1238,8 @@ function setupUI() {
   $('btnQuit').onclick = () => { show('pause', false); audio.sfx.click(); enterMenu(); };
   $('btnAgain').onclick = () => { show('over', false); audio.sfx.click(); restart(); };
   $('btnHome').onclick = () => { show('over', false); audio.sfx.click(); enterMenu(); };
+  $('setVer').textContent = `Version ${GAME_FULL_VERSION}`;
+  $('hBoardIc').innerHTML = boardSVG({ deck: '#ffffff', rail: '#1b9bd6' }, { shadow: false, tilt: -28 });
   $('h-boardBtn').onclick = () => pushAction('board');
   $('h-boardBtn').addEventListener('pointerdown', (e) => e.stopPropagation());
   $('btnRevive').onclick = revive;
@@ -1595,26 +1692,51 @@ function applyCheatVisuals() {
   canvas.style.filter = f.join(' ');
   canvas.style.transform = [cheats.mirror ? 'scaleX(-1)' : '', cheats.upsideDown ? 'rotate(180deg)' : ''].filter(Boolean).join(' ');
   canvas.style.imageRendering = cheats.retro ? 'pixelated' : '';
-  const want = cheats.retro ? 0.22 : (save.settings.renderScale || 1);
-  if (applyCheatVisuals.rs !== want) { applyCheatVisuals.rs = want; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * want); resize(); }
+  const want = cheats.retro ? 0.22 : 1;
+  if (applyCheatVisuals.rs !== want) { applyCheatVisuals.rs = want; pixelExtra = want; applyPixelRatio(); }
   scene.overrideMaterial = cheats.wireframe ? (applyCheatVisuals.wire ||= new THREE.MeshBasicMaterial({ color: 0x66ffcc, wireframe: true })) : null;
   $('hud').classList.toggle('nohud', !!cheats.hideHud);
   $('h-cheat').classList.toggle('hidden', !(run.cheated || (cheats.bot && cheats.botTag)) || state === 'menu');
   $('dbgPanel').classList.toggle('hidden', !cheats.debug);
 }
+let secQuery = '', secPaused = false;
 function drawSecret() {
-  $('secNote').textContent = 'Practice sandbox. Any option that changes gameplay turns the run into a practice run: nothing is banked, submitted or ranked, and online play is blocked. Visual options are free.';
-  $('secTabs').innerHTML = CHEAT_GROUPS.map((g) => `<button class="tab${g === secGroup ? ' sel' : ''}" data-g="${g}">${g.toUpperCase()}</button>`).join('');
-  for (const b of $('secTabs').querySelectorAll('.tab')) b.onclick = () => { audio.sfx.click(); secGroup = b.dataset.g; drawSecret(); };
-  renderCheatGroup($('secBody'), secGroup, () => { applyCheatVisuals(); updateSecretNote(); }, onCheatButton);
+  $('secTabs').innerHTML = CHEAT_GROUPS.map((g) => { const n = groupActive(g); return `<button class="tab${g === secGroup && !secQuery ? ' sel' : ''}" data-g="${g}">${g.toUpperCase()}${n ? `<b class="tabn">${n}</b>` : ''}</button>`; }).join('');
+  for (const b of $('secTabs').querySelectorAll('.tab')) b.onclick = () => { audio.sfx.click(); secGroup = b.dataset.g; secQuery = ''; $('secSearch').value = ''; drawSecret(); };
+  $('secSearch').oninput = () => { secQuery = $('secSearch').value; drawSecret(); };
+  renderCheatGroup($('secBody'), secGroup, () => { applyCheatVisuals(); updateSecretNote(); drawSecretTabs(); }, onCheatButton, secQuery);
   updateSecretNote();
 }
-function updateSecretNote() { const n = activeCount(); $('secReset').textContent = n ? `RESET ALL (${n} ON)` : 'RESET ALL'; }
+function drawSecretTabs() { for (const b of $('secTabs').querySelectorAll('.tab')) { const n = groupActive(b.dataset.g); let t = b.querySelector('.tabn'); if (n && !t) { t = document.createElement('b'); t.className = 'tabn'; b.appendChild(t); } if (t) { if (n) t.textContent = n; else t.remove(); } } }
+function updateSecretNote() {
+  const n = activeCount(), practice = tainted();
+  $('secUnload').classList.toggle('hidden', !practice && !n); // visible as soon as anything is on: one click and online play is back
+  $('secReset').textContent = n ? `RESET ALL (${n} ON)` : 'RESET ALL';
+  $('secNote').className = `stage-note${practice ? ' warn' : ''}`;
+  $('secNote').textContent = practice ? 'Practice session: nothing you do now is banked, submitted or ranked, and online play is blocked.' : 'Visual options are free. Any option that changes gameplay turns the run into a practice run: nothing banked, submitted or ranked.';
+}
+// ² (the key left of 1 on AZERTY; the backtick key elsewhere) opens and closes the menu once it is unlocked, even in a run (it pauses).
+function toggleSecret() {
+  if (!secretUnlocked() || dlgOpen || state === 'loading' || state === 'duel') return;
+  if (!$('secret').classList.contains('hidden')) { closeSecret(); return; }
+  if (!$('onboard').classList.contains('hidden')) return;
+  if (state === 'playing') { pause(); secPaused = state === 'paused'; }
+  audio.sfx.click(); drawSecret(); show('secret', true); $('secSearch').value = secQuery;
+}
+function closeSecret() { audio.sfx.click(); show('secret', false); applyCheatVisuals(); if (secPaused) { secPaused = false; if (state === 'paused') toast('Paused - press P or tap Resume'); } canvas.focus(); }
+// Turns every option off (bot included) so the session is no longer a practice session: online play and ranked work again.
+function unloadCheats() {
+  const inRun = state === 'playing' || (state === 'paused' && secPaused) || state === 'dying';
+  resetCheats(); botOn = false; applyCheatVisuals(); drawSecret();
+  $('h-cheat').classList.toggle('hidden', !(run.cheated && inRun));
+  toast(inRun ? 'Unloaded - this run stays practice, start a new one to play online' : 'Unloaded - online play and ranked are available again');
+}
 function onCheatButton(id) {
   audio.sfx.click();
+  if (id === 'unload') { unloadCheats(); return; }
   if (id === 'resetAll') { resetCheats(); applyCheatVisuals(); drawSecret(); return; }
   if (id === 'lockMenu') { setSecretUnlocked(false); show('secret', false); $('btnSecret').classList.add('hidden'); return; }
-  if (state !== 'playing') { notify('START A RUN FIRST', 'This button acts on a run in progress. Close the menu, press PLAY, then open it again with the pause menu.'); return; }
+  if (state !== 'playing' && !(state === 'paused' && secPaused)) { notify('START A RUN FIRST', 'This button acts on a run in progress. Press PLAY, then open this menu with ² (the game pauses).'); return; }
   run.cheated = true; $('h-cheat').classList.remove('hidden');
   if (id === 'actJet') activatePower('jetpack');
   else if (id === 'actMagnet') activatePower('magnet');
@@ -1625,7 +1747,7 @@ function openSecret(first) {
   if (dlgOpen || state === 'playing' || state === 'loading') return;
   if (!secretUnlocked()) {
     setSecretUnlocked(true); $('btnSecret').classList.remove('hidden');
-    notify('SECRET MENU UNLOCKED', 'Welcome to the Spray Secret Menu: 65+ options to play with. Anything that changes gameplay makes the run a practice run - nothing is banked, submitted or ranked. You can reopen it from Settings.');
+    notify('SECRET MENU UNLOCKED', 'Welcome to the Spray Secret Menu: 65+ options to play with. Press ² (the key left of 1) anywhere to open or close it, even during a run. Anything that changes gameplay makes the run a practice run - nothing is banked, submitted or ranked.');
     return;
   }
   drawSecret(); show('secret', true);
@@ -1926,7 +2048,7 @@ function updateCamera(dt) {
 }
 
 // -------------------------------------------------------------------- theme
-const _white = new THREE.Color(0xffffff);
+const _white = new THREE.Color(0xffffff), _gradeTint = new THREE.Color(), _gradeSun = new THREE.Color(), _gradeNight = new THREE.Color(0.78, 0.9, 1.25);
 function applyTheme(th, dt, bs) {
   const k = 1 - Math.exp(-3 * dt);
   const fa = BIOMES[bs.a].fog, fb = BIOMES[bs.b].fog;
@@ -1952,16 +2074,30 @@ let last = 0;
 let hudAcc = 0;
 function frame(now) {
   requestAnimationFrame(frame);
-  { // optional frame cap + FPS counter
-    const cap = Number(save.settings.fpsCap) || 0;
-    if (cap && now - (frame.lastDraw || 0) < 1000 / cap - 1.5) return;
+  { // frame cap, frame statistics, adaptive resolution
+    const s = save.settings, userCap = Number(s.fpsCap) || 0, idle = state !== 'playing' && state !== 'dying';
+    const menuCap = idle ? presetOf(s.quality).menuFps : 0; // the Performance preset idles at 30 fps in menus (battery, heat)
+    const cap = userCap && menuCap ? Math.min(userCap, menuCap) : userCap || menuCap;
+    const prev = frame.lastDraw || 0;
+    if (cap && now - prev < 1000 / cap - 1.5) return;
     frame.lastDraw = now;
-    if (save.settings.showFps) { frame.n = (frame.n || 0) + 1; if (now - (frame.t0 || 0) > 500) { $('fpsMeter').textContent = `${Math.round((frame.n * 1000) / (now - (frame.t0 || now - 500)))} FPS`; frame.n = 0; frame.t0 = now; } }
+    const ms = prev ? Math.min(now - prev, 250) : 16.7;
+    frameStats.push(ms);
+    if (s.autoRes !== false && state === 'playing' && run.t > 3 && !document.hidden) {
+      const k = adapt.push(ms, 1000 / (userCap || 60)); // target: the frame cap, or 60 fps
+      if (k !== null) { autoK = k; applyPixelRatio(); }
+    }
+    if (s.showFps && now - (frame.t0 || 0) > 500) {
+      frame.t0 = now;
+      const st = frameStats.summary();
+      if (st) $('fpsMeter').textContent = `${st.fps} FPS · ${st.ms.toFixed(1)} ms · 1% low ${st.low1} · ${Math.round(renderer.getPixelRatio() / Math.max(0.01, Math.min(window.devicePixelRatio || 1, 2)) * 100)}% res`;
+    }
   }
   let dt = (now - last) / 1000;
   last = now;
   if (!(dt > 0)) dt = 0.016;
   dt = Math.min(dt, 0.05);
+  if (hitStop > 0) { hitStop -= dt; dt *= 0.04; } // a brief freeze on impact makes the hit feel solid
   if (state === 'playing' || state === 'dying') dt *= cheats.timeScale;
   time += dt;
   if (state === 'duel') { duelCtl.update(dt); duelCtl.render(); return; } // the arena has its own scene and camera
@@ -1973,7 +2109,9 @@ function frame(now) {
     updateMenuChar(dt);
   } else if (state === 'playing' || state === 'dying') {
     menuBlend = damp(menuBlend, 0, 4.5, dt);
-    updatePlaying(dt);
+    // sub-steps: a slow frame must not let the world jump past a thin obstacle (or through a train's side) between two checks
+    const steps = Math.min(2, Math.ceil(dt / 0.022));
+    for (let i = 0; i < steps && (state === 'playing' || state === 'dying'); i++) updatePlaying(dt / steps);
     updateTutorial();
     updatePlayerVisual(dt);
     hudAcc += dt;
@@ -1997,7 +2135,7 @@ function frame(now) {
   weather.set(save.settings.weather === false ? 'none' : wb.weather);
   weather.update(dt, state === 'playing' || state === 'dying' ? run.speed : 0, camera, curTheme.night);
   tickWorldAssets(time);
-  birds.update(dt, state === 'playing' || state === 'dying' ? run.speed : 0, time);
+  if (birds.mesh.visible) birds.update(dt, state === 'playing' || state === 'dying' ? run.speed : 0, time);
   // storms: random lightning flashes in the neon district
   if (curBiomeId === 'neon' && save.settings.weather !== false) {
     stormT -= dt;
@@ -2017,7 +2155,31 @@ function frame(now) {
   if (cheats.debug) $('dbgPanel').textContent = `speed ${run.speed.toFixed(1)}  dist ${Math.floor(run.dist)}  lane ${P.target}  y ${P.y.toFixed(2)}  seed ${run.seed}  t ${run.t.toFixed(1)}  cheated ${!!run.cheated}`;
   audio.setWind(state === 'playing' ? clamp((run.speed - 10) / 28, 0, 1) : 0);
 
-  if (composer && save.settings.quality === 'high') composer.render(dt);
+  const hi = presetOf(save.settings.quality).post;
+  if (hi) {
+    const playing = state === 'playing' || state === 'dying';
+    runnerLight.position.set(P.x, (playing ? P.y : 0) + 1.7, -1.4);
+    runnerLight.intensity = damp(runnerLight.intensity, (playing || state === 'menu') ? 2.5 + curTheme.night * 9 : 0, 3, dt);
+    let best = null, bd = 1e9;
+    if (playing) for (const seg of world.segs) for (const o of seg.solids) {
+      if (!o.vz) continue;
+      const wz = seg.z + o.lz1 + (o.off || 0); // the end of the train that faces the runner
+      if (wz < -75 || wz > 3) continue;
+      if (-wz < bd) { bd = -wz; best = { x: o.x, z: wz }; }
+    }
+    if (best) { trainLight.position.set(best.x, 2.1, best.z + 1.2); trainLight.intensity = damp(trainLight.intensity, 26 * (1 - clamp(bd / 75, 0, 1)) * (0.8 + 0.2 * Math.sin(time * 16)), 8, dt); }
+    else trainLight.intensity = damp(trainLight.intensity, 0, 6, dt);
+    if (grade) {
+      gradeSpeed = damp(gradeSpeed, playing && !run.cheated ? clamp((run.speed - 19) / 22, 0, 1) : 0, 2.5, dt);
+      const u = grade.uniforms, neon = curBiomeId === 'neon', tint = _gradeTint.set(1, 1, 1).lerp(_gradeSun.set(curTheme.sun), 0.16 - curTheme.night * 0.06).lerp(_gradeNight, curTheme.night * 0.35);
+      u.uSpeed.value = save.settings.reduceMotion ? 0 : gradeSpeed;
+      u.uSat.value = damp(u.uSat.value, neon ? 1.22 : curBiomeId === 'tropic' ? 1.14 : 1.06, 2, dt);
+      u.uCon.value = 1.04 + curTheme.night * 0.05;
+      u.uVig.value = 0.2 + curTheme.night * 0.12;
+      u.uTint.value = [tint.r, tint.g, tint.b];
+    }
+  }
+  if (composer && hi) composer.render(dt);
   else renderer.render(scene, camera);
 }
 
@@ -2031,6 +2193,11 @@ function updateMenuChar(dt) {
 function updatePlayerVisual(dt) {
   const ch = player;
   ch.root.position.set(P.x, P.y, 0);
+  if ((state === 'dying' || state === 'over') && run.deathKind === 'slam') { // thrown back and bouncing
+    const cT = state === 'over' ? 2 : run.dieT;
+    ch.root.position.z = Math.min(cT, 0.7) * 1.9;
+    ch.root.position.y += Math.max(0, Math.sin(Math.min(cT, 0.5) * 6.3)) * 0.5 * Math.exp(-cT * 2);
+  }
   const introSpray = !!run.introOn && run.t < SPRAY_T && state === 'playing';
   ch.root.rotation.y = lerp(ch.root.rotation.y, introSpray ? Math.PI / 2 : 0, 1 - Math.exp(-(introSpray ? 14 : 8) * dt)); // faces the wall, then forward
   ch.can.visible = introSpray;
@@ -2048,7 +2215,7 @@ function updatePlayerVisual(dt) {
   else if (!P.grounded) st = 'jump';
   const rollP = P.rolling ? 1 - P.rollT / C.ROLL_TIME : 0;
   ch.crashT = (state === 'dying') ? run.dieT : (state === 'over' ? 2 : 0);
-  poseCharacter(ch, { state: st, speed: run.speed, vy: P.vy, vx: P.vx, rollP, crashT: ch.crashT }, dt);
+  poseCharacter(ch, { state: st, speed: run.speed, vy: P.vy, vx: P.vx, rollP, crashT: ch.crashT, kind: st === 'crash' ? run.deathKind : P.hitKind, side: P.hitSide }, dt);
   ch.board.visible = P.onBoard && state !== 'dying';
   ch.board.position.set(0, 0.1 + Math.sin(time * 6) * 0.015, 0);
   ch.board.rotation.z = -P.vx * 0.012;
@@ -2125,6 +2292,11 @@ window.__game = {
   },
   setBot: (v) => { botOn = !!v; },
   setSpeed: (s) => { run.speed = s; },
+  fastForward(m) { // test hook: scroll the world (difficulty follows the segment index), then clear the start zone and skip the intro
+    for (let d = 0; d < m; d += 30) world.update(0.1, 300);
+    world.clearAhead(70);
+    if (run.introOn) { run.introOn = false; P.x = C.LANES[P.target]; }
+  },
   addCoins: (n) => { save.coins += n; persist(); },
   cam: camera,
   scene, renderer, sun, hemi,
@@ -2135,16 +2307,18 @@ window.__game = {
     let i = 0;
     const events = [];
     const lastStumble = { v: G.active };
+    let roofFrames = 0, maxLenAhead = 0;
     for (; i < n; i++) {
       time += dt;
       if (state !== 'playing' && state !== 'dying') break;
       updatePlaying(dt);
       fx.update(dt, run.speed, true, camera, false);
-      if (G.active && !lastStumble.v) events.push(`stumble@${Math.floor(run.dist)}m`);
+      if (P.grounded && P.y > 2.5) roofFrames++;
+      if (G.active && !lastStumble.v) events.push(`stumble@${Math.floor(run.dist)}m:${P.hitKind}`);
       lastStumble.v = G.active;
       if (state === 'over') break;
     }
-    return { state, t: +run.t.toFixed(1), dist: Math.floor(run.dist), coins: run.coins, score: Math.floor(run.score), reason: run.deathReason || null, info: run.deathInfo || null, events: events.slice(0, 12), segs: world.segs.length, speed: +run.speed.toFixed(1) };
+    return { roof: roofFrames, state, t: +run.t.toFixed(1), dist: Math.floor(run.dist), coins: run.coins, score: Math.floor(run.score), reason: run.deathReason || null, info: run.deathInfo || null, events: events.slice(0, 12), segs: world.segs.length, speed: +run.speed.toFixed(1) };
   },
 };
 

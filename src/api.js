@@ -4,10 +4,9 @@ import { collect, deviceId } from './device.js';
 
 export const online = { vpn: null, token: null, player: null, ticket: null, submitted: false, ping: null, wallet: 0, inv: null, events: null, serverOffset: 0, sanction: null };
 
-// Same origin by default (npm start). `npm run dev:all` runs the backend on its own port and sets NEXT_PUBLIC_BACKEND.
-const BACKEND = (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_BACKEND) || '';
-export const httpBase = () => BACKEND || location.origin;
-export const wsUrl = () => (BACKEND ? BACKEND.replace(/^http/, 'ws') : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`) + '/ws';
+// Backend address: same origin by default; NEXT_PUBLIC_BACKEND_URL or public/config.js point it elsewhere (see config.js).
+import { httpBase, checkConfig } from './config.js';
+export { httpBase, wsUrl, backendUrl, configSource } from './config.js';
 
 export async function call(method, path, body, auth = true, timeout = 6000) {
   const ctl = new AbortController();
@@ -102,3 +101,5 @@ export const appeals = async () => { const r = await call('GET', '/api/appeals')
 export const appealDetail = async (id) => { const r = await call('GET', '/api/appeals/' + id); return r && r.status === 200 ? r.json : null; };
 export const fileAppeal = (type, message) => call('POST', '/api/appeals', { type, message }, true, 15000);
 export const stats = async () => { const r = await call('GET', '/api/stats'); return r && r.status === 200 ? r.json : null; };
+
+if (typeof window !== "undefined") checkConfig();

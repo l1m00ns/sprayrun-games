@@ -10,8 +10,9 @@ export const SCHEMA = [
     { k: 'tips', label: 'Gameplay hints', type: 'toggle', def: true },
   ] },
   { tab: 'Graphics', items: [
-    { k: 'quality', label: 'Graphics preset', type: 'select', def: 'high', opts: [['high', 'High (bloom + shadows)'], ['low', 'Performance']] },
+    { k: 'quality', label: 'Graphics preset', type: 'select', def: 'high', opts: [['high', 'High (bloom, outlines, shadows)'], ['medium', 'Balanced (shadows, no post-processing)'], ['low', 'Performance (fastest)']], hint: 'Picked for your graphics card on first launch. Performance also starts without anti-aliasing after a reload.' },
     { k: 'renderScale', label: 'Resolution scale', type: 'range', def: 1, min: 0.5, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` },
+    { k: 'autoRes', label: 'Adaptive resolution', type: 'toggle', def: true, hint: 'Lowers the resolution when the frame rate drops and raises it back when there is room. Never goes above the scale you chose.' },
     { k: 'outline', label: 'Cartoon outlines', type: 'toggle', def: true },
     { k: 'bloom', label: 'Bloom glow', type: 'toggle', def: true },
     { k: 'shadows', label: 'Shadows', type: 'toggle', def: true },

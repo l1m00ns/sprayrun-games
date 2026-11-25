@@ -11,14 +11,15 @@ npm run dev:all          # backend (http://localhost:4000) + web (http://localho
 npm run build && npm start   # production : UI + API + temps réel sur le même port (3000)
 npm run dev              # tout-en-un en développement (HMR)
 ```
-Base SQLite dans `data/` (`DATA_DIR`). Node ≥ 22.5. Le client parle à son propre serveur (ou à `NEXT_PUBLIC_BACKEND` avec `dev:all`).
+Base SQLite dans `data/` (`DATA_DIR`). Node ≥ 22.13. Le client parle à son propre serveur par défaut. **Backend ailleurs (Render, Railway…)** : `NEXT_PUBLIC_BACKEND_URL=https://ton-service.onrender.com` dans le `.env` du front (figé au `npm run build`), ou `public/config.js` pour changer sans reconstruire ; côté backend `CORS_ORIGIN=https://ton-front` et `TRUST_PROXY=1`. La version s’affiche dans Paramètres (`1.3.1-<commit>`).
 
 ## Jeu
-- **5 cartes + World Tour**, météo, jour/nuit, scènes animées, **trains** (garés, en circulation, de face), **graffitis**, animation de départ.
+- **5 cartes + World Tour**, météo, jour/nuit, scènes animées, **graffitis**, animation de départ. **Palm Bay** refaite : mer animée (reflets, écume), ponton, bar tiki, filet de volley, serviettes, pirogue, bouées, palmiers penchés.
+- **Trains pleins** : on ne marche plus sur les toits (plus de rampes), toucher un toit en retombant = crash ; wagons plus nombreux et plus longs (jusqu’à 4), **couloirs** (slalom, enchaînements saut/roulade entre deux murs), écarts qui se resserrent et deuxième palier de difficulté après ~4,5 km ; vitesse plafond ×1,6. Les chocs ont leur animation (trébuchement, coup latéral, tête cognée, projection en arrière + étoiles + arrêt sur image).
 - **Rio** (héros original : casquette, doudoune) + 12 coureurs, tenues, planches et traînées (boutique).
 - **Vitesse progressive** : la rampe authentique (110→220) continue ensuite vers ×1,4 ; **commandes « snappy »** (changement de voie 0,13 s, entrées appliquées instantanément) ou « classiques » (0,27 s).
 - **Gold Rush Duel** (mode limité) : en pleine course la piste se transforme en **arène FPS** fermée avec le pistolet doré **Gold Eagle** (recul, culasse, douilles, rechargement, visée). Le duel arrive à un **moment aléatoire, au moins une fois par partie** ; **le premier à toucher tue** (headshot 72, corps 34, jambes 22, une seule vie) ; 2:00 écoulées = **égalité**. Le vainqueur gagne un **badge de profil la première fois**, ensuite **8 s de boost de vitesse + une seconde vie, pièces désactivées pendant ces 8 s**. Après le duel la course **reprend**. Duel en ligne validé par le serveur ; bot d'entraînement hors ligne (5 niveaux).
-- **Menu secret Spray** (code Konami) : 67 options (joueur, pouvoirs, vitesse, bot pro, monde, look, caméra, duel, outils). Toute option qui change le gameplay rend la session « entraînement » : rien n'est enregistré, envoyé ni classé, le jeu en ligne est bloqué. Bot pro à planificateur (survit 10/10 parties de 100 s sans invincibilité).
+- **Menu secret Spray** (code Konami, puis touche **²** pour l’ouvrir/fermer partout, même en course) : recherche, compteurs par onglet, bouton **UNLOAD** (tout désactiver pour rejouer en ligne), 68 options (joueur, pouvoirs, vitesse, bot pro, monde, look, caméra, duel, outils). Toute option qui change le gameplay rend la session « entraînement » : rien n'est enregistré, envoyé ni classé, le jeu en ligne est bloqué. Bot pro à planificateur (survit 10/10 parties de 100 s sans invincibilité).
 - **Winter Fest** (1er déc → 6 janv., horloge UTC identique pour tous) et **calendrier de l'avent** de 25 portes (récompenses côté serveur).
 - **Langues** : bouton 🌐 + écran d'accueil à la première visite (langue, apparence, commandes/caméra, fair-play & vie privée, compte). Anglais et français (traduction en direct de toute l'interface ; ajouter une langue = un dictionnaire dans `src/i18n.js`).
 - **Interface** : barre supérieure (Jouer, Boutique, Carrière, Classement, Événements, Mises à jour, Support), profil, **statistiques** en graphiques, **paramètres** (≈35 options : graphismes, caméra, commandes, audio, accessibilité), aucune pop-up navigateur (dialogues natifs), scrollbars masquées.
@@ -43,6 +44,8 @@ node tools/hub.mjs <dir>    # barre, boutique, avent, compte, support (21)
 node tools/welcome.mjs <dir># accueil, langues, ranked, contestation, stats (18)
 node tools/secret.mjs       # Konami, 67 options, isolation entraînement, bot pro (14)
 node tools/duel.mjs <dir>   # arène, Gold Eagle, bot, victoire/nul, warp solo (11)
+node tools/perf.mjs         # GPU, résolution adaptative, stats d’images (22)
+node tools/trains.mjs       # trains pleins, chocs, difficulté, bot pro sur le générateur dur (14)
 node tools/features.mjs · smoke.mjs . · online.mjs . · mp.mjs .
 node tools/ai-panel.mjs     # panel IA réel (utilise .env)  ·  ai-probe.mjs · ai-tune.mjs
 ```

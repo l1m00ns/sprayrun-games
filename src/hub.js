@@ -2,6 +2,8 @@
 // Vanilla DOM like the rest of the engine UI. Everything it needs from the engine comes in through `ctx`.
 import * as C from './consts.js';
 import { OUTFITS, BOARDS, TRAILS } from './cosmetics.js';
+import { boardSVG } from './icons.js';
+import { fillIcons } from './iconsax.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -31,9 +33,7 @@ const art = {
       : `<rect x="30" y="72" width="60" height="58" rx="18" fill="${top}"/><rect x="24" y="78" width="14" height="34" rx="7" fill="${top}"/><rect x="82" y="78" width="14" height="34" rx="7" fill="${top}"/><rect x="40" y="78" width="40" height="8" rx="4" fill="${acc}"/>`;
     return `<svg viewBox="0 -8 120 150" width="${size}" height="${size * 1.2}" aria-hidden="true">${body}<circle cx="60" cy="52" r="24" fill="${def.skin}"/>${hat}<circle cx="51" cy="54" r="2.6" fill="#1a1a1a"/><circle cx="69" cy="54" r="2.6" fill="#1a1a1a"/><path d="M52 63q8 6 16 0" stroke="#7a3b22" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
   },
-  board(c) {
-    return `<svg viewBox="0 0 140 90" aria-hidden="true"><ellipse cx="70" cy="76" rx="50" ry="7" fill="rgba(0,0,0,.35)"/><rect x="14" y="30" width="112" height="26" rx="13" fill="${c.deck}"/><rect x="22" y="38" width="96" height="9" rx="4.5" fill="${c.rail}"/>${c.stripes ? [30, 48, 66, 84, 102].map((x) => `<path d="M${x} 30l10 26" stroke="${c.rail}" stroke-width="6"/>`).join('') : ''}<circle cx="34" cy="64" r="5" fill="#ffd23f"/><circle cx="70" cy="68" r="5" fill="#ffd23f"/><circle cx="106" cy="64" r="5" fill="#ffd23f"/></svg>`;
-  },
+  board(c) { return boardSVG(c); },
   trail(hex) {
     const col = '#' + hex.toString(16).padStart(6, '0');
     return `<svg viewBox="0 0 140 90" aria-hidden="true">${Array.from({ length: 16 }, (_, i) => `<circle cx="${14 + i * 7.4}" cy="${46 + Math.sin(i * 1.7) * 18}" r="${2 + (i % 4)}" fill="${col}" opacity="${0.35 + i / 24}"/>`).join('')}</svg>`;
@@ -45,6 +45,7 @@ const art = {
 export function initHub(ctx) {
   const { api, save, persist, audio, dialog, notify, CHARACTERS, BIOMES } = ctx;
   const body = $('hubBody'), page = $('hubpage'), bar = $('topbar');
+  fillIcons(bar); // Iconsax line icons in the top bar
   let tab = 'play', timers = [], seq = 0;
   const clearTimers = () => { timers.forEach(clearInterval); timers = []; };
   const click = () => { try { audio.initAudio(); audio.sfx.click(); } catch (e) { /* audio not ready */ } };

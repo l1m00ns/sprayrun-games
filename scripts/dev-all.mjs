@@ -1,6 +1,6 @@
 // `npm run dev:all` : starts the backend (API + WebSocket) AND the Next.js web app together.
 //   backend -> http://localhost:4000      web -> http://localhost:3000
-// The web app is told where the backend lives through NEXT_PUBLIC_BACKEND.
+// The web app is told where the backend lives through NEXT_PUBLIC_BACKEND_URL (see src/config.js).
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const API_PORT = process.env.API_PORT || '4000';
 const WEB_PORT = process.env.WEB_PORT || '3000';
-const env = { ...process.env, API_PORT, NEXT_PUBLIC_BACKEND: `http://localhost:${API_PORT}` };
+const env = { ...process.env, API_PORT, NEXT_PUBLIC_BACKEND_URL: `http://localhost:${API_PORT}` };
 
 const procs = [];
 function run(name, color, cmd, args) {
