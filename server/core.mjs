@@ -359,9 +359,11 @@ export function attachWs(server) {
     socket.setNoDelay(true); // no Nagle batching: lowest possible latency
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   });
-  setInterval(matchTick, 500).unref();
-  setInterval(ltmTick, 50).unref();
-  setInterval(() => { for (const ws of wss.clients) { if (!ws.isAlive) { ws.terminate(); continue; } ws.isAlive = false; ws.ping(); } for (const r of rooms.values()) checkFinish(r); }, 15000).unref();
+  // A bug in one timer tick must never take the whole game server down: log it and carry on with the next tick.
+  const guarded = (name, fn) => () => { try { fn(); } catch (e) { console.error(`[${name}]`, e && e.stack ? e.stack : e); } };
+  setInterval(guarded('matchTick', matchTick), 500).unref();
+  setInterval(guarded('ltmTick', ltmTick), 50).unref();
+  setInterval(guarded('heartbeat', () => { for (const ws of wss.clients) { if (!ws.isAlive) { ws.terminate(); continue; } ws.isAlive = false; ws.ping(); } for (const r of rooms.values()) checkFinish(r); }), 15000).unref();
 
   wss.on('connection', (ws, req) => {
     ws.ip = clientIp(req);
@@ -399,7 +401,8 @@ function ltmTick() {
     }
     if (room.duel) {
       duelMod.tickDuel(room, t, dio);
-      if (room.duel.over) { room.overAt ||= t; if (t - room.overAt > 40000) rooms.delete(room.code); }
+      const d = room.duel; // tickDuel can end the duel by timeout; the race then RESUMES and room.duel is cleared
+      if (d && d.over) { room.overAt ||= t; if (t - room.overAt > 40000) rooms.delete(room.code); }
     }
   }
 }

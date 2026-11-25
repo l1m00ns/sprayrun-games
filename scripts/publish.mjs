@@ -11,12 +11,13 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TOKEN = process.env.GITHUB_TOKEN;
+const DRY = !!process.env.DRY_RUN; // DRY_RUN=1: stage the backend and check its imports, push nothing (no token needed)
 const OWNER = process.env.GITHUB_OWNER || 'l1m00ns';
 const GAME = process.env.GAME_REPO || 'sprayrun-games', BACK = process.env.BACKEND_REPO || 'sprayrun-backends';
 const message = process.argv[2] || 'Update Reverse Surfers';
-if (!TOKEN) { console.error('Set GITHUB_TOKEN in the environment.'); process.exit(1); }
+if (!TOKEN && !DRY) { console.error('Set GITHUB_TOKEN in the environment (or DRY_RUN=1 for a check without pushing).'); process.exit(1); }
 
-const scrub = (s) => String(s).split(TOKEN).join('***');
+const scrub = (s) => (TOKEN ? String(s).split(TOKEN).join('***') : String(s));
 function git(cwd, args, { allowFail = false } = {}) {
   try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
   catch (e) { if (allowFail) return ''; throw new Error(scrub(`git ${args[0]} failed: ${e.stderr || e.message}`).slice(0, 600)); }
@@ -49,15 +50,19 @@ function publish(dir, repo) {
 }
 
 // ---- 1. the whole game
-publish(root, GAME);
+if (!DRY) publish(root, GAME);
 
 // ---- 2. the backend, staged in its own folder (server/ + the two shared rule files + tests)
 const stage = path.join(os.tmpdir(), 'rs-backend-stage');
 fs.mkdirSync(stage, { recursive: true });
-for (const e of fs.readdirSync(stage)) if (e !== '.git') fs.rmSync(path.join(stage, e), { recursive: true, force: true });
+for (const e of fs.readdirSync(stage)) if (e !== '.git' && e !== 'node_modules') fs.rmSync(path.join(stage, e), { recursive: true, force: true });
 const copy = (from, to = from) => { const dst = path.join(stage, to); fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.cpSync(path.join(root, from), dst, { recursive: true }); };
 for (const f of fs.readdirSync(path.join(root, 'server'))) if (f.endsWith('.mjs') && f !== 'standalone.mjs') copy(`server/${f}`);
-copy('server/standalone.mjs', 'server.mjs'); // the backend's own entry point
+// The backend's own entry point: the same file as server/standalone.mjs, but it now lives at the repository ROOT, so its
+// import must point into ./server/ (a plain copy kept `from './core.mjs'`, which does not exist there and broke the build).
+const entry = fs.readFileSync(path.join(root, 'server', 'standalone.mjs'), 'utf8');
+if (!entry.includes("from './core.mjs'")) throw new Error("server/standalone.mjs no longer imports './core.mjs': update scripts/publish.mjs");
+fs.writeFileSync(path.join(stage, 'server.mjs'), entry.replace("from './core.mjs'", "from './server/core.mjs'"));
 copy('src/consts.js'); copy('src/arena.js'); // movement / speed rules shared with the client (the server validates with them)
 for (const t of ['backend.mjs', 'duel-net.mjs', 'ai-probe.mjs', 'ai-panel.mjs', 'ai-tune.mjs']) if (fs.existsSync(path.join(root, 'tools', t))) copy(`tools/${t}`);
 copy('.env.example');
@@ -67,4 +72,24 @@ fs.writeFileSync(path.join(stage, 'package.json'), JSON.stringify({
   engines: { node: '>=22.5' }, scripts: { start: 'node server.mjs', test: 'node tools/backend.mjs && node tools/duel-net.mjs' }, dependencies: { ws: '^8.23.0' },
 }, null, 2) + '\n');
 fs.writeFileSync(path.join(stage, 'README.md'), fs.readFileSync(path.join(root, 'server', 'README.md'), 'utf8'));
+// Safety net: every relative import in the staged backend must resolve to a real file (this is what broke `vercel build`).
+function checkImports(dir) {
+  const broken = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      if (e.name === '.git' || e.name === 'node_modules') continue;
+      const f = path.join(d, e.name);
+      if (e.isDirectory()) { walk(f); continue; }
+      if (!/\.(mjs|js)$/.test(e.name)) continue;
+      const text = fs.readFileSync(f, 'utf8');
+      for (const m of text.matchAll(/(?:from\s+|import\s+|import\()\s*['"](\.{1,2}\/[^'"]+)['"]/g)) {
+        if (!fs.existsSync(path.resolve(path.dirname(f), m[1]))) broken.push(`${path.relative(dir, f)}: ${m[1]}`);
+      }
+    }
+  };
+  walk(dir);
+  if (broken.length) { console.error('Refusing to publish the backend, unresolved imports:\n  ' + broken.join('\n  ')); process.exit(3); }
+}
+checkImports(stage);
+if (DRY) { console.log(`dry run: backend staged in ${stage}, all relative imports resolve, nothing was committed or pushed`); process.exit(0); }
 publish(stage, BACK);
