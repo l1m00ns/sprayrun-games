@@ -29,7 +29,8 @@ export default function GameUI() {
             <div className="pill tb-coins"><span className="coin-i"></span><span id="mCoins">0</span></div>
             <button className="tb-level" id="tbLevel" title="Career"><b id="tbLv">LV 1</b><span className="tb-xp"><i id="tbXp"></i></span></button>
             <button className="tb-acct" id="tbAcct"><span className="tb-avatar" id="tbAvatar">?</span><b id="tbName">Sign in</b></button>
-            <button className="btn round sm" id="tbLang" title="Language"><b id="tbLangCode">EN</b></button>
+            <button className="btn round sm" id="tbFriends" title="Friends"><span data-ic="user" data-s="22"></span><i className="tb-badge" id="tbFrBadge"></i></button>
+            <button className="btn round sm" id="tbLang" title="Language"><img id="tbLangFlag" className="flag-btn" src="/flags/gb.svg" alt="" /><b id="tbLangCode">EN</b></button>
             <button className="btn round sm" id="btnSettings" title="Settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.4a.5.5 0 0 0-.6-.2l-2.5 1a7.4 7.4 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.4a.5.5 0 0 0 .1.6L4.6 11a7.7 7.7 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.4c.1.2.4.3.6.2l2.5-1c.5.4 1.1.7 1.7 1l.4 2.6c0 .2.2.4.5.4h4c.3 0 .5-.2.5-.4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1c.2.1.5 0 .6-.2l2-3.4a.5.5 0 0 0-.1-.6zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg></button>
           </div>
         </div>
@@ -44,6 +45,8 @@ export default function GameUI() {
             <div><span>Hoverboards</span><b id="mBoards">0</b></div>
           </div>
           <div id="m-bottom">
+            <div id="partyStrip" className="hidden"></div>
+            <button className="modecard" id="modeCard"></button>
             <button className="btn go" id="playBtn">PLAY</button>
             <div className="picker">
               <button className="btn round" id="prevChar">◀</button>
@@ -154,6 +157,9 @@ export default function GameUI() {
           <div className="tabs" id="secTabs"></div>
           <div id="secBody"></div>
           <div className="row"><button className="btn sm" id="secReset">RESET ALL</button><button className="btn sm green hidden" id="secUnload">UNLOAD - PLAY ONLINE</button><span className="sec-hint"><kbd>²</kbd> open / close &nbsp; <kbd>Esc</kbd> close</span><button className="btn go" id="secClose">CLOSE</button></div></div></div>
+        <div id="modePick" className="screen modal hidden"><div className="panel" style={{ width: 'min(96vw,900px)' }}><h2 className="ink">GAME MODE</h2><div id="mpBody"></div><div className="row"><button className="btn go" id="mpClose">CLOSE</button></div></div></div>
+        <div id="friends" className="screen modal hidden"><div className="panel" style={{ width: 'min(94vw,680px)' }}><h2 className="ink">FRIENDS</h2><div id="frBody"></div><div className="row"><button className="btn go" id="frClose">CLOSE</button></div></div></div>
+        <div id="searchOv" className="screen modal hidden"><div className="panel" style={{ width: 'min(92vw,520px)' }}><div id="soBody"></div><div className="row"><button className="btn red" id="soCancel">CANCEL</button><button className="btn sm" id="soOffline" style={{ display: 'none' }}>PLAY OFFLINE INSTEAD</button></div></div></div>
         <div id="duelhud" className="hidden">
           <div id="dTop">
             <div className="dside"><b id="dMeName">YOU</b><div className="dbar"><i id="dMeBar"></i></div></div>

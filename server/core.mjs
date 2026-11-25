@@ -4,7 +4,7 @@ import { db, q } from './db.mjs';
 import { sign, verify, nonce, uuid } from './auth.mjs';
 import { validateRun, checkLive, classify, maxDistAt, maxScore } from './anticheat.mjs';
 import { reply, readJson, authPlayer, clientIp, originAllowed } from './http.mjs';
-import { profile, careerOf, tierOf as tierOfRating, strike as strikeP, accessProblem, trackSocket, untrackSocket, recordEvent, kick } from './players.mjs';
+import { profile, careerOf, tierOf as tierOfRating, strike as strikeP, accessProblem, trackSocket, untrackSocket, recordEvent, kick, sockets } from './players.mjs';
 import { routeV2 } from './routes.mjs';
 import { applyRun, bumpCareer, addXp } from './economy.mjs';
 import { issueToken, cleanName as cleanNameAcc } from './accounts.mjs';
@@ -13,6 +13,7 @@ import * as duelMod from './duel.mjs';
 import * as ipintel from './ipintel.mjs';
 import { collusionSet } from './devices.mjs';
 import { nowMs, dayKey, dailyInfo, rankedMinSeconds } from './catalog.mjs';
+import * as social from './social.mjs';
 
 const MAPS = ['city', 'snow', 'tropic', 'desert', 'neon'];
 const ROOM_MAPS = new Set([...MAPS, 'tour']);
@@ -190,7 +191,8 @@ function roomCode() {
 function snapshot(room) {
   return {
     t: 'room', code: room.code, host: room.host, map: room.map, state: room.state, pub: room.pub, ranked: room.ranked, ltm: room.ltm || null, mode: room.mode,
-    players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, char: p.char, ready: p.ready, alive: p.alive, d: Math.floor(p.d), s: Math.floor(p.s), rating: p.rating, tier: p.rating == null ? null : tierOf(p.rating) })),
+    teamMode: !!room.teamMode, size: room.size || 0,
+    players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, char: p.char, team: p.team == null ? null : p.team, ready: p.ready, alive: p.alive, d: Math.floor(p.d), s: Math.floor(p.s), rating: p.rating, tier: p.rating == null ? null : tierOf(p.rating) })),
   };
 }
 const pushRoom = (room) => broadcast(room, snapshot(room));
@@ -255,6 +257,7 @@ function checkFinish(room) {
 }
 
 function finish(room) {
+  if (room.teamMode) return finishTeams(room);
   room.state = 'results';
   const all = [...room.players.values()];
   for (const p of all) { // final plausibility check on what each player claims
@@ -294,19 +297,28 @@ function settleRanked(room, ranked) {
 const searchWindow = (e, t) => Math.min(80 + ((t - e.joined) / 1000) * 25, 800); // widens as you wait
 function dequeue(ws) {
   for (const k of Object.keys(queues)) queues[k] = queues[k].filter((e) => e.ws !== ws);
+  for (let i = tq.length - 1; i >= 0; i--) { // a member of a waiting group leaves: the whole group stops searching
+    const e = tq[i];
+    if (!e.wsList.includes(ws)) continue;
+    tq.splice(i, 1);
+    for (const w of e.wsList) send(w, { t: 'tq_cancelled' });
+    if (e.party) social.setPartyState(e.party, 'idle');
+  }
 }
 function enqueue(ws, mode) {
-  if (!ws.player || ws.player.banned) { send(ws, { t: 'err', msg: ws.player ? 'Ranked is disabled for this account' : 'Sign in first' }); return; }
+  if (!ws.player || ws.player.banned) { send(ws, { t: 'err', msg: ws.player ? 'Ranked is disabled for this account' : 'Sign in first' }); return false; }
   if (mode !== 'duel') { // ranked ladders: a minimum amount of real playing time first
     const have = careerOf(q.getPlayer.get(ws.player.id)).time, need = rankedMinSeconds();
-    if (have < need) { send(ws, { t: 'err', code: 'ranked_locked', msg: `Ranked unlocks after ${Math.max(1, Math.ceil(need / 60))} minutes of play (${Math.max(1, Math.ceil((need - have) / 60))} min to go).`, need, have: Math.floor(have) }); return; }
+    if (have < need) { send(ws, { t: 'err', code: 'ranked_locked', msg: `Ranked unlocks after ${Math.max(1, Math.ceil(need / 60))} minutes of play (${Math.max(1, Math.ceil((need - have) / 60))} min to go).`, need, have: Math.floor(have) }); return false; }
   }
   leaveAll(ws);
   queues[mode].push({ ws, joined: now(), rating: ws.player.rating, mode, pid: ws.player.id, links: collusionSet(ws.player.id) });
   send(ws, { t: 'queued', mode, rating: Math.round(ws.player.rating), tier: tierOf(ws.player.rating) });
+  return true;
 }
 function matchTick() {
   const t = now();
+  matchTeams(t);
   for (const mode of Object.keys(queues)) {
     const list = queues[mode].filter((e) => e.ws.readyState === 1).sort((a, b) => a.rating - b.rating);
     queues[mode] = list;
@@ -351,6 +363,142 @@ function startRace(room, countdown = 3) {
   pushRoom(room);
 }
 
+// ---- teams: normal / ranked Duos and Trios (2 teams of N), normal Solo (free for all) ---------------------------------
+// A queue entry is a GROUP (a whole party, or one player). A party always lands on the same team.
+const tq = [];
+const specKey = (s) => `${s.kind}:${s.size}:${s.mode}`;
+const avgRating = (list) => list.reduce((s, e) => s + e.rating * e.wsList.length, 0) / Math.max(1, list.reduce((s, e) => s + e.wsList.length, 0));
+function enqueueGroup(wsList, spec, partyId) {
+  const members = wsList.filter((w) => w.player && w.readyState === 1);
+  if (!members.length) return { ok: false, msg: 'Nobody to queue' };
+  for (const ws of members) {
+    if (ws.player.banned) return { ok: false, msg: 'An account in this group cannot queue' };
+    if (spec.kind === 'ranked') {
+      const have = careerOf(q.getPlayer.get(ws.player.id)).time, need = rankedMinSeconds();
+      if (have < need) return { ok: false, code: 'ranked_locked', msg: `${ws.player.name}: ranked unlocks after ${Math.max(1, Math.ceil(need / 60))} minutes of play (${Math.max(1, Math.ceil((need - have) / 60))} min to go)` };
+    }
+  }
+  if (spec.kind === 'ranked' && spec.size === 1) { const ok = enqueue(members[0], spec.mode); return { ok }; } // the classic ranked ladder (free for all, Elo by place)
+  for (const ws of members) leaveAll(ws);
+  const links = new Set(); for (const ws of members) for (const l of collusionSet(ws.player.id)) links.add(l);
+  const rating = members.reduce((s, w) => s + w.player.rating, 0) / members.length;
+  tq.push({ id: partyId || `s${nextId++}`, party: partyId || null, wsList: members, spec, joined: now(), rating, links });
+  for (const ws of members) send(ws, { t: 'tq_queued', spec, size: members.length, party: !!partyId, rating: Math.round(rating), tier: tierOf(rating) });
+  return { ok: true };
+}
+function dequeueGroup(id, wsList = []) {
+  const i = tq.findIndex((e) => e.id === id);
+  if (i >= 0) { const [e] = tq.splice(i, 1); for (const w of e.wsList) send(w, { t: 'tq_cancelled' }); }
+  for (const ws of wsList) { for (const k of Object.keys(queues)) { const had = queues[k].some((e) => e.ws === ws); queues[k] = queues[k].filter((e) => e.ws !== ws); if (had) send(ws, { t: 'queue_cancelled' }); } }
+}
+const inMatch = (pid) => { const set = sockets.get(pid); if (set) for (const ws of set) if (ws.room && (ws.room.state === 'running' || (ws.room.state === 'lobby' && ws.room.teamMode))) return true; return false; };
+social.init({ send, enqueueGroup, dequeueGroup, inMatch });
+
+// every way to pick entries whose sizes add up to N (optionally containing `must`)
+function subsets(items, N, must) {
+  const out = [];
+  (function rec(i, picked, sum) {
+    if (out.length > 80) return;
+    if (sum === N) { if (!must || picked.includes(must)) out.push(picked.slice()); return; }
+    if (i >= items.length || sum > N) return;
+    picked.push(items[i]); rec(i + 1, picked, sum + items[i].wsList.length); picked.pop();
+    rec(i + 1, picked, sum);
+  })(0, [], 0);
+  return out;
+}
+const linkedAcross = (A, B) => A.some((a) => a.wsList.some((x) => { const l = collusionSet(x.player.id); return B.some((b) => b.wsList.some((y) => l.has(y.player.id))); }));
+function findTeams(pool, seed, N, t, ranked) {
+  for (const A of subsets(pool, N, seed)) {
+    const rest = pool.filter((e) => !A.includes(e));
+    for (const B of subsets(rest, N)) {
+      if (ranked) {
+        const waited = Math.max(...[...A, ...B].map((e) => t - e.joined)), win = Math.min(80 + (waited / 1000) * 25, 800);
+        if (Math.abs(avgRating(A) - avgRating(B)) > win) continue;
+        if (linkedAcross(A, B)) continue; // the same person / device on both sides is never matched
+      }
+      return [A, B];
+    }
+  }
+  return null;
+}
+function matchTeams(t) {
+  for (let i = tq.length - 1; i >= 0; i--) { tq[i].wsList = tq[i].wsList.filter((w) => w.readyState === 1); if (!tq[i].wsList.length) tq.splice(i, 1); }
+  const byKey = new Map();
+  for (const e of tq) { const k = specKey(e.spec); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(e); }
+  for (const list of byKey.values()) {
+    list.sort((a, b) => a.joined - b.joined);
+    const spec = list[0].spec, N = spec.size;
+    if (N === 1) { // normal solo: a free-for-all of up to 4, started after a short wait with at least 2
+      if (list.length >= 4 || (list.length >= 2 && t - list[0].joined >= 6000)) startFFA(list.slice(0, 4), spec);
+      else for (const e of list) for (const ws of e.wsList) send(ws, { t: 'tq_searching', waited: Math.floor((t - e.joined) / 1000), found: list.length, need: 2 });
+      continue;
+    }
+    const used = new Set();
+    for (const a of list) {
+      if (used.has(a)) continue;
+      const pool = list.filter((e) => !used.has(e));
+      const teams = findTeams(pool, a, N, t, spec.kind === 'ranked');
+      if (teams) { teams.flat().forEach((e) => used.add(e)); startTeamMatch(teams, spec); }
+      else for (const ws of a.wsList) send(ws, { t: 'tq_searching', waited: Math.floor((t - a.joined) / 1000), found: pool.reduce((s, e) => s + e.wsList.length, 0), need: N * 2 });
+    }
+  }
+}
+const takeFromQueue = (entries) => { for (const e of entries) { const i = tq.indexOf(e); if (i >= 0) tq.splice(i, 1); } };
+function startFFA(entries, spec) {
+  takeFromQueue(entries);
+  const room = newRoom({ ranked: false, mode: spec.mode, map: MAPS[Math.floor(Math.random() * MAPS.length)], state: 'lobby' });
+  for (const e of entries) { for (const ws of e.wsList) addToRoom(ws, room, { char: ws.char }); if (e.party) social.setPartyState(e.party, 'ingame'); }
+  pushRoom(room);
+  broadcast(room, { t: 'match', code: room.code, map: room.map, mode: room.mode, ranked: false, players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, rating: p.rating == null ? null : Math.round(p.rating), tier: p.rating == null ? null : tierOf(p.rating) })) });
+  setTimeout(() => startRace(room, 3), 3500).unref();
+}
+function startTeamMatch(teams, spec) {
+  takeFromQueue(teams.flat());
+  const room = newRoom({ ranked: spec.kind === 'ranked', mode: spec.mode, map: MAPS[Math.floor(Math.random() * MAPS.length)], state: 'lobby', teamMode: true, size: spec.size });
+  teams.forEach((team, ti) => { for (const e of team) { for (const ws of e.wsList) { addToRoom(ws, room, { char: ws.char }); room.players.get(ws.id).team = ti; } if (e.party) social.setPartyState(e.party, 'ingame'); } });
+  pushRoom(room);
+  const side = (ti) => [...room.players.values()].filter((p) => p.team === ti).map((p) => ({ id: p.id, name: p.name, rating: p.rating == null ? null : Math.round(p.rating), tier: p.rating == null ? null : tierOf(p.rating) }));
+  broadcast(room, { t: 'match', code: room.code, map: room.map, mode: room.mode, ranked: room.ranked, size: spec.size, teams: [side(0), side(1)], players: [...side(0), ...side(1)] });
+  setTimeout(() => startRace(room, 3), 3500).unref();
+}
+function finishTeams(room) {
+  room.state = 'results';
+  const all = [...room.players.values()];
+  for (const p of all) { // same final plausibility check as a solo race
+    if (!p.dq && p.ac) {
+      const bad = checkLive(p, { d: p.d, s: p.s, sp: 0 }, now());
+      if (bad.includes('score') || bad.includes('dist_ahead_of_clock')) { p.dq = true; if (p.pid) strike(p.pid, 'race_final:' + bad.join('+'), { d: p.d, s: p.s }, 2); }
+    }
+  }
+  const score = [0, 0], dist = [0, 0];
+  for (const p of all) if (!p.dq) { score[p.team] += Math.floor(p.s); dist[p.team] += Math.floor(p.d); }
+  const winner = score[0] === score[1] ? -1 : score[0] > score[1] ? 0 : 1;
+  for (const p of all) p.place = winner === -1 || p.team === winner ? 1 : 2;
+  const ranking = all.slice().sort((a, b) => a.place - b.place || b.s - a.s);
+  broadcast(room, { t: 'results', teamMode: true, winner, teams: [0, 1].map((ti) => ({ team: ti, score: score[ti], dist: dist[ti] })), ranking: ranking.map((p) => ({ id: p.id, name: p.name, char: p.char, team: p.team, d: Math.floor(p.d), s: Math.floor(p.s), dq: !!p.dq })), ranked: room.ranked });
+  const humans = all.filter((p) => p.pid);
+  if (room.ranked && humans.length >= 2) {
+    const rows = new Map(humans.map((p) => [p.pid, q.getPlayer.get(p.pid)]));
+    const avg = [0, 1].map((ti) => { const m = humans.filter((p) => p.team === ti); return m.reduce((s, p) => s + rows.get(p.pid).rating, 0) / Math.max(1, m.length); });
+    const matchId = Number(q.addMatch.run(now(), room.map, room.mode, room.seed, 1).lastInsertRowid);
+    for (const p of humans) {
+      const row = rows.get(p.pid), E = 1 / (1 + 10 ** ((avg[1 - p.team] - avg[p.team]) / 400)), S = winner === -1 ? 0.5 : p.team === winner ? 1 : 0, K = row.games < 30 ? 40 : 28;
+      let delta = Math.round(K * (S - E) * 10) / 10;
+      if (p.dq) delta = Math.min(delta, -25);
+      if (p.left) delta -= 6;
+      const after = Math.max(0, row.rating + delta);
+      q.setRating.run(after, S === 1 && !p.dq ? 1 : 0, p.pid);
+      if (!p.dq) { bumpCareer(p.pid, (c) => { c.rankedGames++; if (S === 1) c.rankedWins++; }); addXp(p.pid, 40 + (S === 1 ? 60 : 0)); }
+      q.addMatchPlayer.run(matchId, p.pid, p.name, Math.floor(p.s), Math.floor(p.d), p.place, row.rating, after, p.dq ? 1 : 0);
+      send(p.ws, { t: 'rating', before: Math.round(row.rating), after: Math.round(after), delta: Math.round(delta * 10) / 10, place: p.place, tier: tierOf(after), dq: !!p.dq, team: true });
+    }
+  } else if (!room.ranked) for (const p of humans) if (!p.dq) addXp(p.pid, 15 + (p.team === winner ? 25 : 0));
+  const seen = new Set();
+  for (const p of humans) { const party = social.partyOf(p.pid); if (party && !seen.has(party.id)) { seen.add(party.id); social.setPartyState(party.id, 'idle'); } }
+  pushRoom(room);
+  setTimeout(() => { if (room.state === 'results' && [...room.players.values()].every((p) => p.ws.readyState !== 1)) rooms.delete(room.code); }, 60000).unref();
+}
+
 // ---- websocket ------------------------------------------------------------------------------
 export function attachWs(server) {
   wss = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: false });
@@ -385,8 +533,8 @@ export function attachWs(server) {
       if (!msg || typeof msg.t !== 'string') return;
       onMessage(ws, msg, t);
     });
-    ws.on('close', () => { if (ws.player) untrackSocket(ws.player.id, ws); leaveAll(ws); });
-    ws.on('error', () => { if (ws.player) untrackSocket(ws.player.id, ws); leaveAll(ws); });
+    ws.on('close', () => { if (ws.player) untrackSocket(ws.player.id, ws); social.onClose(ws); leaveAll(ws); });
+    ws.on('error', () => { if (ws.player) untrackSocket(ws.player.id, ws); social.onClose(ws); leaveAll(ws); });
   });
 }
 
@@ -425,8 +573,10 @@ function onMessage(ws, msg, t) {
     ws.player = p; ws.char = cleanChar(msg.char);
     trackSocket(p.id, ws);
     send(ws, { t: 'authed', player: profile(p) });
+    social.onAuth(ws);
     return;
   }
+  if (social.onMessage(ws, msg)) return; // parties (p_*)
   const room = ws.room;
   const me = room && room.players.get(ws.id);
   switch (msg.t) {
@@ -488,5 +638,5 @@ function onMessage(ws, msg, t) {
   }
 }
 
-export const stats = () => ({ rooms: rooms.size, queued: queues.classic.length + queues.nocoin.length + queues.duel.length, clients: wss ? wss.clients.size : 0 });
+export const stats = () => ({ ...social.stats(), teamQueue: tq.length, rooms: rooms.size, queued: queues.classic.length + queues.nocoin.length + queues.duel.length, clients: wss ? wss.clients.size : 0 });
 void db;

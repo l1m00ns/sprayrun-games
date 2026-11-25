@@ -11,10 +11,11 @@ import { save, persist, resetSave, setPersistHook } from './save.js';
 import { initHub } from './hub.js';
 import { dressed } from './cosmetics.js';
 import { boardSVG } from './icons.js';
+import { initSocial } from './social.js';
 import { GAME_FULL_VERSION } from './version.js';
 import { fillIcons } from './iconsax.js';
 import { createDuel } from './duel.js';
-import { setLang, getLang, detectLang } from './i18n.js';
+import { setLang, getLang, detectLang, flagUrl } from './i18n.js';
 import { createOnboarding, openLanguagePicker } from './onboarding.js';
 import { cheats, GROUPS as CHEAT_GROUPS, tainted, activeCount, groupActive, konamiListener, renderGroup as renderCheatGroup, unlocked as secretUnlocked, setUnlocked as setSecretUnlocked, resetAll as resetCheats } from './secret.js';
 import { SCHEMA as SETTINGS, defaults as settingDefaults, renderTab as renderSettingsTab } from './settings.js';
@@ -107,7 +108,7 @@ function setupComposer() {
 // Apply one setting (or all of them when key is undefined). Cheap, safe to call any time.
 function applySettings(key) {
   const s = save.settings, all = key === undefined, H = document.documentElement;
-  if (all || key === 'lang') { setLang(s.lang || detectLang()); const c = $('tbLangCode'); if (c) c.textContent = getLang().toUpperCase(); }
+  if (all || key === 'lang') { setLang(s.lang || detectLang()); const c = $('tbLangCode'); if (c) c.textContent = getLang().toUpperCase(); const fl = $('tbLangFlag'); if (fl) fl.src = flagUrl(getLang()); }
   if (all || key === 'reduceMotion') H.classList.toggle('reduce', !!s.reduceMotion);
   if (all || key === 'highContrast') H.classList.toggle('hc', !!s.highContrast);
   if (all || key === 'colorBlind') H.classList.toggle('cb', !!s.colorBlind);
@@ -187,7 +188,7 @@ const menuBiome = () => { const m = curMap(); return m === 'tour' ? 'city' : m; 
 const worldMode = () => { const m = curMap(); return m === 'tour' ? ['tour', 'city'] : ['fixed', m]; };
 const net = new Net();
 const mp = { active: false, running: false, counting: false, players: new Map(), ghosts: new Map(), room: null, seed: 0, sendT: 0, hudT: 0, results: null };
-let duelCtl = null, queueDuelRef = null, onboarding = null;
+let duelCtl = null, queueDuelRef = null, onboarding = null, social = null, ensureOnlineRef = null;
 let botOn = /[?&]bot/.test(location.search);
 const botActive = () => botOn || cheats.bot;
 const godNow = () => cheats.god || cheats.noclip || (cheats.bot && cheats.botGod);
@@ -1187,7 +1188,7 @@ function toggleMute() {
 }
 
 function setupUI() {
-  $('playBtn').onclick = () => tryPlay();
+  $('playBtn').onclick = () => (social ? social.onPlay() : tryPlay());
   $('prevChar').onclick = () => changeChar(-1);
   $('nextChar').onclick = () => changeChar(1);
   $('unlockBtn').onclick = async () => {
@@ -1402,6 +1403,15 @@ function updateMpHud(dt) {
     ? { name: p.name, d: run.dist, alive: state === 'playing' || state === 'dying', me: true }
     : { name: p.name, d: p.d, alive: p.alive, me: false }));
   rows.sort((a, b) => b.d - a.d);
+  if (mp.room && mp.room.teamMode) { // team race: both teams' totals on top, mine highlighted
+    const sum = [0, 0]; let mine = -1;
+    for (const p of mp.players.values()) { const rp = mp.room.players.find((x) => x.id === p.id); if (!rp || rp.team == null) continue; if (p.id === net.id) mine = rp.team; sum[rp.team] += p.id === net.id ? run.score : p.s; }
+    const my = Math.max(0, mine);
+    box.innerHTML = `<div class="tm"><span class="a">YOUR TEAM <b>${fmt(sum[my])}</b></span><span class="b"><b>${fmt(sum[1 - my])}</b> RIVALS</span></div>`
+      + rows.map((r) => `<div class="r${r.me ? ' me' : ''}${r.alive ? '' : ' out'}"><span>${escapeHtml(r.name)}</span><b>${fmt(r.d)}m</b></div>`).join('');
+    if (shown.mpres && mp.results == null) renderMpWait();
+    return;
+  }
   box.innerHTML = rows.map((r) => `<div class="r${r.me ? ' me' : ''}${r.alive ? '' : ' out'}"><span>${escapeHtml(r.name)}</span><b>${fmt(r.d)}m</b></div>`).join('');
   if (shown.mpres && mp.results == null) renderMpWait();
 }
@@ -1435,12 +1445,27 @@ function renderMpWait() {
 }
 
 function setupOnline() {
-  let authedResolve = null;
+  let wsAuthed = false, connecting = null; const authWaiters = [];
   const boardSel = { board: 'classic', period: 'all' };
   let searchTimer = null;
 
   net.on('hello', () => net.send({ t: 'auth', token: online.token, char: CHARACTERS[charIndex].id }));
-  net.on('authed', (m) => { online.player = m.player; renderProfile(); if (authedResolve) authedResolve(); });
+  net.on('authed', (m) => { online.player = m.player; wsAuthed = true; renderProfile(); while (authWaiters.length) authWaiters.shift()(); });
+  // One connection attempt at a time, shared by everybody who needs the socket (lobby, PLAY, friends, auto-connect).
+  async function connectNet() {
+    if (net.connected && wsAuthed) return;
+    if (!connecting) {
+      connecting = (async () => {
+        if (!net.connected) await net.connect(api.wsUrl());
+        if (!wsAuthed) await new Promise((res, rej) => {
+          const f = () => { clearTimeout(to); res(); };
+          const to = setTimeout(() => { const i = authWaiters.indexOf(f); if (i >= 0) authWaiters.splice(i, 1); rej(new Error('Authentication timed out')); }, 7000);
+          authWaiters.push(f);
+        });
+      })().finally(() => { connecting = null; });
+    }
+    await connecting;
+  }
 
   async function connectOnline() {
     if (tainted()) throw new Error('Secret Menu options are active - turn them off to play online');
@@ -1449,11 +1474,7 @@ function setupOnline() {
     $('lobErr').textContent = 'Connecting...';
     const p = await api.ensureAccount(name);
     if (!p) throw new Error('Could not reach the server');
-    if (!net.connected) {
-      const authed = new Promise((res, rej) => { authedResolve = res; setTimeout(() => rej(new Error('Authentication timed out')), 7000); });
-      await net.connect(api.wsUrl());
-      await authed;
-    }
+    await connectNet();
     $('lobErr').textContent = '';
   }
   const go = async (kind) => {
@@ -1462,6 +1483,16 @@ function setupOnline() {
   };
 
   queueDuelRef = async () => { await connectOnline(); net.send({ t: 'dq', char: CHARACTERS[charIndex].id }); };
+  // Online without the lobby form: the account name comes from the save (guests get one on the fly).
+  async function ensureOnline() {
+    if (tainted()) throw new Error('Secret Menu options are active - turn them off to play online');
+    const name = (save.mpName || (online.player && online.player.name) || CHARACTERS[charIndex].name).trim().slice(0, 14);
+    const p = await api.ensureAccount(name);
+    if (!p) throw new Error('Could not reach the server');
+    await connectNet();
+  }
+  ensureOnlineRef = ensureOnline;
+  social = initSocial({ inRace: () => mp.active, $, api, net, online, save, persist, audio, dialog, toast, show, CHARACTERS, charId: () => CHARACTERS[charIndex].id, ensureOnline, startDuel, startOffline: () => tryPlay(), tainted });
   $('btnOnline').onclick = async () => {
     audio.initAudio(); audio.sfx.click();
     $('lobName').value = save.mpName || CHARACTERS[charIndex].name;
@@ -1559,6 +1590,16 @@ function setupOnline() {
     mp.running = false;
     show('hud', false); show('mpres', true);
     const myRank = m.ranking.findIndex((r) => r.id === net.id) + 1;
+    if (m.teamMode) { // 2 v 2 / 3 v 3: the team total decides
+      const mine = (m.ranking.find((r) => r.id === net.id) || {}).team, other = 1 - mine;
+      const w = m.winner;
+      $('mpTitle').textContent = w === -1 ? 'DRAW' : w === mine ? 'VICTORY' : 'DEFEAT';
+      $('mpWait').textContent = m.ranked ? 'Updating your rating...' : `${fmt(m.teams[mine].score)} - ${fmt(m.teams[other].score)}`;
+      $('mpRank').innerHTML = [mine, other].map((ti) => `<div class="lob-row team${ti === mine ? ' me' : ''}"><b>${ti === mine ? 'YOUR TEAM' : 'RIVALS'}</b><span style="color:var(--yellow);font-family:var(--font)">${fmt(m.teams[ti].score)} pts</span></div>${m.ranking.filter((r) => r.team === ti).map((r) => `<div class="lob-row${r.id === net.id ? ' me' : ''}"><b>${escapeHtml(r.name)}</b><span>${fmt(r.s)} pts / ${fmt(r.d)} m</span>${r.dq ? '<span class="tag">DQ</span>' : ''}</div>`).join('')}`).join('');
+      if (state === 'dying' || state === 'playing') state = 'over';
+      audio.setMood('menu'); audio.stopWind();
+      return;
+    }
     $('mpTitle').textContent = myRank === 1 ? 'YOU WIN!' : `RACE OVER - #${myRank}`;
     $('mpWait').textContent = m.ranked ? 'Updating your rating...' : (myRank === 1 ? 'Best score on the track!' : '');
     $('mpRank').innerHTML = m.ranking.map((r, i) => `<div class="lob-row${r.id === net.id ? ' me' : ''}"><b>#${i + 1} ${escapeHtml(r.name)}</b><span>${fmt(r.s)} pts / ${fmt(r.d)} m</span>${r.dq ? '<span class="tag">DQ</span>' : ''}</div>`).join('');
@@ -1590,6 +1631,7 @@ function setupOnline() {
     if (mp.active) { toast('Disconnected'); leaveRoom(true); }
     else { mp.room = null; showLobbyView('connect'); }
   });
+  net.also('close', () => { wsAuthed = false; connecting = null; });
   setInterval(() => { if (net.connected) net.send({ t: 'ping', c: Date.now() }); }, 2000);
 
   // silent boot: resume the account if a server is reachable
@@ -1666,6 +1708,7 @@ async function bootOnline() {
   hubUI.checkUpdates();
   const p = online.player;
   if (p && (p.banned || p.kickedUntil)) showSanction({ error: p.banned ? 'banned' : 'kicked', reason: p.banReason || 'Fair-play violation', until: p.kickedUntil });
+  else if (p && ensureOnlineRef && !tainted()) ensureOnlineRef().catch(() => { /* the socket reconnects on its own */ }); // friends, invites and presence need the live connection
   return true;
 }
 async function onSignedIn(importedCoins) {
@@ -1869,6 +1912,7 @@ function initHubUI() {
 }
 
 function renderProfile() {
+  if (social) social.refresh();
   const p = online.player;
   $('pfName').textContent = p ? p.name : 'Offline';
   $('pfTier').textContent = p ? p.tier : '-';

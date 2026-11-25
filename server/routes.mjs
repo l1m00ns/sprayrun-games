@@ -10,6 +10,7 @@ import { aiStatus } from './ai.mjs';
 import * as support from './support.mjs';
 import * as appeals from './appeals.mjs';
 import * as devices from './devices.mjs';
+import * as social from './social.mjs';
 import * as ipintel from './ipintel.mjs';
 import { playerStats, globalStats } from './stats.mjs';
 import { rankedMinSeconds, BADGES } from './catalog.mjs';
@@ -146,6 +147,18 @@ export async function routeV2(req, res, url, me, route) {
     const r = putCloud(me.id, body.ver, body.data);
     reply(res, r.ok ? 200 : r.error === 'conflict' ? 409 : 400, r);
     return true;
+  }
+
+  // ------------------------------------------------------------------------------------------ friends
+  if (route.startsWith('GET /api/friends') || route.startsWith('POST /api/friends')) {
+    if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }
+    if (route === 'GET /api/friends') { reply(res, 200, social.listFriends(me)); return true; }
+    const body = await readJson(req, 1024);
+    let r = null;
+    if (route === 'POST /api/friends/request') r = social.sendRequest(me, body.name);
+    else if (route === 'POST /api/friends/respond') r = social.respond(me, String(body.id || ''), !!body.accept);
+    else if (route === 'POST /api/friends/remove') r = social.removeFriend(me, String(body.id || ''));
+    if (r) { reply(res, r.ok ? 200 : 400, r); return true; }
   }
 
   // ---------------------------------------------------------------------------------------- support

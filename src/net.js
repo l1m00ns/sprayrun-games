@@ -7,6 +7,7 @@ export class Net {
     this.connected = false;
   }
   on(type, fn) { this.handlers.set(type, fn); return this; }
+  also(type, fn) { const prev = this.handlers.get(type); this.handlers.set(type, prev ? (m) => { prev(m); fn(m); } : fn); return this; } // add a listener, keep the existing one
 
   connect(url) {
     return new Promise((resolve, reject) => {

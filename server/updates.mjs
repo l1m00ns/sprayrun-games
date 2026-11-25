@@ -1,6 +1,16 @@
 // Update history shown in the game's "Updates" tab. Newest first. Edit this file when you ship something.
 export const UPDATES = [
   {
+    version: '1.4.0', date: '2026-11-25', title: 'Play together',
+    tags: ['online', 'social'],
+    notes: [
+      'A mode card sits above PLAY: Limited-time, Ranked and Normal in Solo, Duos or Trios, plus the offline modes. Pick one and press PLAY, no Online button needed.',
+      'Parties of up to three, 2 v 2 and 3 v 3 team races where the team total decides, and a rating that moves with your team result.',
+      'Friends: add people by username or friend code, see who is online, in a queue or in a match, and invite them to your party.',
+      '13 languages with flags, and these patch notes are translated too.',
+    ],
+  },
+  {
     version: '1.3.1', date: '2026-11-25', title: 'Solid trains, tougher runs',
     tags: ['gameplay', 'performance'],
     notes: [
