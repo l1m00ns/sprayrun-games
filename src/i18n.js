@@ -168,21 +168,38 @@ export function translate(str) {
 }
 export const t = translate;
 
+// Every text node keeps its ENGLISH original (__en). Switching language re-translates from that original, never from the previous
+// translation: going fr -> de -> en used to leave half of the screen in French.
 function node(n) {
   const cur = n.nodeValue;
   if (!cur || !cur.trim()) return;
-  if (n.__fr !== undefined && cur === n.__fr) { if (lang === 'en') { n.nodeValue = n.__en; n.__fr = undefined; } return; } // already ours
-  n.__en = cur; n.__fr = undefined;
-  if (lang !== 'en') { const o = translate(cur); if (o !== cur) { n.__fr = o; n.nodeValue = o; } }
+  if (n.__out !== undefined && cur === n.__out) { // our own output
+    if (n.__lang === lang) return;
+    const o = lang === 'en' ? n.__en : translate(n.__en);
+    n.__lang = lang; n.__out = o === n.__en ? undefined : o;
+    if (o !== cur) n.nodeValue = o;
+    return;
+  }
+  n.__en = cur; n.__lang = lang; n.__out = undefined; // new text, or text the game just changed: it is English
+  if (lang === 'en') return;
+  const o = translate(cur);
+  if (o !== cur) { n.__out = o; n.nodeValue = o; }
 }
 function attrs(el) {
   for (const a of ATTRS) {
     if (!el.hasAttribute || !el.hasAttribute(a)) continue;
-    const cur = el.getAttribute(a), key = '__a_' + a;
-    if (el[key] && cur === el[key].fr) { if (lang === 'en') { el.setAttribute(a, el[key].en); el[key] = null; } continue; }
+    const cur = el.getAttribute(a), key = '__a_' + a, st = el[key];
+    if (st && st.out !== undefined && cur === st.out) {
+      if (st.lang === lang) continue;
+      const o = lang === 'en' ? st.en : translate(st.en);
+      st.lang = lang; st.out = o === st.en ? undefined : o;
+      if (o !== cur) el.setAttribute(a, o);
+      continue;
+    }
+    el[key] = { en: cur, out: undefined, lang };
     if (lang === 'en') continue;
     const o = translate(cur);
-    if (o !== cur) { el[key] = { en: cur, fr: o }; el.setAttribute(a, o); }
+    if (o !== cur) { el[key].out = o; el.setAttribute(a, o); }
   }
 }
 function walk(root) {

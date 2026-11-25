@@ -14,6 +14,7 @@ db.exec(`
 CREATE TABLE IF NOT EXISTS friends (a TEXT NOT NULL, b TEXT NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY (a, b));
 CREATE INDEX IF NOT EXISTS friends_b ON friends (b);
 CREATE TABLE IF NOT EXISTS friend_codes (code TEXT PRIMARY KEY, pid TEXT UNIQUE NOT NULL);
+CREATE TABLE IF NOT EXISTS blocks (a TEXT NOT NULL, b TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY (a, b));
 `);
 const st = {
   codeOf: db.prepare('SELECT code FROM friend_codes WHERE pid = ?'),
@@ -31,6 +32,8 @@ const st = {
   countOut: db.prepare("SELECT COUNT(*) AS n FROM friends WHERE a = ? AND status = 'pending'"),
 };
 const MAX_FRIENDS = 100, MAX_PENDING = 30;
+const blockedQ = db.prepare('SELECT 1 FROM blocks WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)');
+export const isBlocked = (x, y) => !!blockedQ.get(x, y, y, x); // a block works in both directions for requests, invitations and messages
 const now = () => Date.now();
 let hooks = { send: (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); }, enqueueGroup: () => ({ ok: false }), dequeueGroup: () => {}, inMatch: () => false };
 export function init(h) { hooks = { ...hooks, ...h }; }
@@ -68,6 +71,7 @@ export function sendRequest(me, text) {
   if (!target) return { ok: false, error: 'not_found', message: 'No player with that username or friend code' };
   if (target.id === me.id) return { ok: false, error: 'self', message: 'That is you' };
   if (target.banned) return { ok: false, error: 'not_found', message: 'No player with that username or friend code' };
+  if (isBlocked(me.id, target.id)) return { ok: false, error: 'not_found', message: 'No player with that username or friend code' };
   if (areFriends(me.id, target.id)) return { ok: false, error: 'already', message: 'Already friends' };
   const back = st.rel.get(target.id, me.id);
   if (back && back.status === 'pending') return respond(me, target.id, true); // they already asked you: that is a yes
@@ -192,7 +196,7 @@ export function onMessage(ws, msg) {
       if (!party) party = createParty(ws);
       if (party.leader !== me.id) { err('Only the party leader can invite'); break; }
       const id = String(msg.id || '');
-      if (!areFriends(me.id, id)) { err('You can only invite friends'); break; }
+      if (!areFriends(me.id, id) || isBlocked(me.id, id)) { err('You can only invite friends'); break; }
       if (party.members.size >= PARTY_MAX) { err('The party is full'); break; }
       if (partyByPid.has(id)) { err('That player is already in a party'); break; }
       if (!sockets.has(id)) { err('That player is offline'); break; }

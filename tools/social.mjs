@@ -201,6 +201,54 @@ try {
   ok('a member disconnecting cancels the group search', gone);
   const stillP = await p1.ws.wait('party', 4000, (m) => m.members.length === 1 && m.state === 'idle').then(() => true).catch(() => false);
   ok('the party shrinks and goes back to idle', stillP);
+
+  // ----------------------------------------------------------------------------------------------- private messages
+  const ana2 = T.Ana, ben2 = T.Ben, eli2 = T.Eli;
+  r = await api('POST', `/api/dm/${ben2.id}`, { text: '  hello   Ben  ' }, ana2.token);
+  ok('friends can message each other', r.status === 200 && r.json.message.text === 'hello Ben', JSON.stringify(r.json).slice(0, 80));
+  const live = await ben2.ws.wait('dm', 4000, (m) => m.text === 'hello Ben').catch(() => null);
+  ok('the message is pushed live to the recipient', !!live && live.from.name === 'Ana', `closed=${ben2.ws.closed} ready=${ben2.ws.ws.readyState} last=${ben2.ws.msgs.slice(-3).map((m) => m.t).join(',')}`);
+  r = await api('GET', '/api/dm', null, ben2.token);
+  ok('the conversation list shows the unread count', r.json.unread === 1 && r.json.conversations[0].unread === 1 && r.json.conversations[0].with.name === 'Ana');
+  r = await api('GET', `/api/dm/${ana2.id}`, null, ben2.token);
+  ok('opening a conversation returns the history and marks it read', r.json.messages.length === 1 && (await api('GET', '/api/dm', null, ben2.token)).json.unread === 0);
+  r = await api('POST', `/api/dm/${eli2.id}`, { text: 'hi stranger' }, ana2.token);
+  ok('only friends can be messaged', r.status === 400 && r.json.error === 'not_friends');
+  r = await api('POST', `/api/dm/${ben2.id}`, { text: 'hello Ben' }, ana2.token);
+  ok('an identical message is refused for a moment', r.status === 400 && r.json.error === 'duplicate');
+  r = await api('POST', `/api/dm/${ben2.id}`, { text: 'what the fuck' }, ana2.token);
+  ok('the word filter masks insults', r.status === 200 && !/fuck/i.test(r.json.message.text) && /\*+/.test(r.json.message.text), r.json.message && r.json.message.text);
+  let limited = 0;
+  for (let i = 0; i < 9; i++) { const x = await api('POST', `/api/dm/${ben2.id}`, { text: 'spam ' + i }, ana2.token); if (x.status === 429) limited++; }
+  ok('flooding is rate limited', limited >= 1, `limited=${limited}`);
+  r = await api('POST', '/api/dm/report', { id: ana2.id, msg: 1, reason: 'insults' }, ben2.token);
+  ok('a message can be reported', r.status === 200);
+  r = await api('POST', '/api/block', { id: ana2.id }, ben2.token);
+  ok('blocking works and ends the friendship', r.status === 200 && (await api('GET', '/api/friends', null, ben2.token)).json.friends.every((f) => f.name !== 'Ana'));
+  r = await api('POST', `/api/dm/${ben2.id}`, { text: 'are you there' }, ana2.token);
+  ok('a blocked player cannot message', r.status === 400);
+  r = await api('POST', '/api/friends/request', { name: 'ben_run' }, ana2.token);
+  ok('a blocked player cannot send a friend request', r.status === 400);
+
+  // ----------------------------------------------------------------------------------------------------- data rights + legal
+  for (const pth of ['/terms', '/privacy']) { const pr = await fetch(base + pth); const html = await pr.text(); ok(`${pth} page is served`, pr.status === 200 && /Reverse Surfers/.test(html) && html.length > 3000, `${pr.status} ${html.length}b`); }
+  const zed = await user('Zed', 'zed_run');
+  await api('POST', '/api/friends/request', { name: 'cat_run' }, zed.token); await api('POST', '/api/friends/respond', { id: zed.id, accept: true }, T.Cat.token);
+  await api('POST', `/api/dm/${T.Cat.id}`, { text: 'hi cat' }, zed.token);
+  const ex = await api('GET', '/api/me/export', null, zed.token);
+  ok('export returns my data without credential material', ex.status === 200 && ex.json.profile.name === 'Zed' && !('pass_hash' in ex.json.profile) && ex.json.messages.messages.length === 1 && ex.json.friends.length >= 1, Object.keys(ex.json).join(',').slice(0, 90));
+  let dl = await api('POST', '/api/me/delete', { password: 'wrong-password' }, zed.token);
+  ok('deleting needs the right password', dl.status === 400 && dl.json.error === 'bad_credentials');
+  dl = await api('POST', '/api/me/delete', { password: 'secret123' }, zed.token);
+  ok('account deletion succeeds', dl.status === 200 && dl.json.ok);
+  const lg = await api('POST', '/api/auth/login', { username: 'zed_run', password: 'secret123' });
+  ok('the deleted account can no longer sign in', lg.status !== 200);
+  ok('the session token stops working', (await api('GET', '/api/me', null, zed.token)).status === 401);
+  ok('friends no longer list the deleted player', (await api('GET', '/api/friends', null, T.Cat.token)).json.friends.every((f) => f.name !== 'Zed'));
+  const g2 = await user('Guesty');
+  dl = await api('POST', '/api/me/delete', { confirm: 'nope' }, g2.token);
+  ok('a guest must type DELETE', dl.status === 400 && dl.json.error === 'confirm');
+  ok('...and can then delete', (await api('POST', '/api/me/delete', { confirm: 'delete' }, g2.token)).status === 200);
 } catch (e) { ok('no unexpected error', false, String(e && e.message)); }
 
 console.log(`\n${pass} passed, ${fail} failed`);

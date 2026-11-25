@@ -17,6 +17,12 @@ export const UI_STRINGS = [
   'The party leader picks the mode', 'Waiting for the party leader', 'Leave the party to play this mode', 'SERVER UNREACHABLE', 'Online modes need a connection. Play an offline run instead?',
   'PARTY INVITE', 'LATER', 'You were removed from the party', 'Party closed', 'REMOVE FRIEND', 'REMOVE', 'KEEP', 'VICTORY', 'DEFEAT', 'DRAW', 'Updating your rating...',
   // messages coming from the server
+  // private messages, data rights, legal
+  'Messages', 'MESSAGE', 'SEND', 'REPORT', 'BLOCK', 'Write a message', 'Say hello.', 'No conversations yet. Open a friend and press MESSAGE.', 'BLOCK PLAYER', 'REPORT PLAYER', 'SEND REPORT', 'Player blocked',
+  'Report sent, thank you', 'Could not send the report', 'Not friends', 'Back', 'Download my data', 'Delete my account', 'Terms of Service', 'Privacy Policy', 'By continuing you accept the', 'and the',
+  'DELETE ACCOUNT', 'DELETE FOREVER', 'KEEP MY ACCOUNT', 'Your data was downloaded', 'Could not export your data', 'Sign in first', 'There is no online account to delete', 'Could not delete the account', 'now',
+  'Write something first', 'You cannot message yourself', 'Player not found', 'You cannot message this player', 'You can only message friends', 'Messaging is disabled for this account', 'Slow down a little',
+  'Message limit reached, try again later', 'You just sent that', 'Too many reports today', 'Wrong password', 'Type DELETE to confirm', 'Deletion failed, nothing was changed', 'Searching', 'Preparing', 'Launch', 'GO!',
   'Only the party leader can invite', 'You can only invite friends', 'The party is full', 'That player is already in a party', 'That player is offline', 'Invitation sent', 'That party no longer exists',
   'Leave your party first', 'You are in a match', 'You need an invitation', 'The party is busy', 'Only the leader can remove players', 'Only the party leader can change the mode', 'Cancel the search first',
   'Only the party leader can start', 'Linked accounts cannot queue together in ranked', 'Only the party leader can cancel', 'Too many requests, try again later', 'No player with that username or friend code',

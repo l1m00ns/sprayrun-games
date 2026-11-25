@@ -92,18 +92,20 @@ export function initSocial(ctx) {
   // --------------------------------------------------------------------------------------------- search overlay
   function openSearch(spec, info = {}) {
     S.busy = false; S.matched = false;
-    S.search = { t0: performance.now(), spec, ...info };
+    S.search = { t0: performance.now(), spec, phase: 0, ...info };
     clearInterval(S.soTimer);
     show('searchOv', true); renderSearch(); renderModeCard();
-    S.soTimer = setInterval(() => { const el = $('soTime'); if (el && S.search) { el.textContent = mmss((performance.now() - S.search.t0) / 1000); if (!S.matched && performance.now() - S.search.t0 > 15000) $('soOffline').style.display = ''; } }, 250);
+    S.soTimer = setInterval(() => { const el = document.querySelector('.so-ring span'); if (el && S.search && S.search.phase === 0) { el.textContent = mmss((performance.now() - S.search.t0) / 1000); if (performance.now() - S.search.t0 > 15000) $('soOffline').style.display = ''; } }, 250);
   }
   function closeSearch() { S.search = null; S.busy = false; clearInterval(S.soTimer); show('searchOv', false); renderModeCard(); }
   function renderSearch() {
     const s = S.search; if (!s) return;
     const m = s.spec ? modeFromSpec(s.spec) : current();
     const members = S.party ? S.party.members : [];
-    $('soBody').innerHTML = `<div class="so-art">${modeArt(m, { size: 'lg' })}</div><h3>${esc(m.name)}</h3><p class="so-sub">${esc(rulesName())}${s.tier ? ` · ${esc(s.tier)} ${esc(s.rating)}` : ''}</p>`
-      + `<div class="so-time" id="soTime">${mmss((performance.now() - s.t0) / 1000)}</div><p class="so-note" id="soNote">${esc(s.note || 'Looking for runners')}</p>`
+    const PH = ['Searching', 'Preparing', 'Launch'];
+    $('soBody').innerHTML = `<div class="so-ring ${s.phase === 2 ? 'go' : s.phase === 1 ? 'found' : ''}"><i></i><span>${s.phase === 2 ? '' : mmss((performance.now() - s.t0) / 1000)}</span></div><ol class="so-steps">${PH.map((p, i) => `<li class="${i < s.phase ? 'done' : i === s.phase ? 'on' : ''}">${p}</li>`).join('')}</ol>`
+      + `<div class="so-art">${modeArt(m, { size: 'lg' })}</div><h3>${esc(m.name)}</h3><p class="so-sub">${esc(rulesName())}${s.tier ? ` · ${esc(s.tier)} ${esc(s.rating)}` : ''}</p>`
+      + `<p class="so-note" id="soNote">${esc(s.note || 'Looking for runners')}</p>`
       + `<div class="so-party">${members.map((p) => `<span class="so-chip" style="--c:${colorOf(p.char)}"><i>${esc((p.name || '?')[0].toUpperCase())}</i>${esc(p.name)}</span>`).join('')}</div>`
       + (s.teams ? `<div class="so-teams">${s.teams.map((t, i) => `<div class="${i === s.mine ? 'mine' : ''}"><small>${i === s.mine ? 'Your team' : 'Rivals'}</small>${t.map((p) => `<span>${esc(p.name)}${p.tier ? ` <em>${esc(p.tier)}</em>` : ''}</span>`).join('')}</div>`).join('')}</div>` : '');
     $('soCancel').style.display = isLeader() && !S.matched ? '' : 'none';
@@ -136,11 +138,17 @@ export function initSocial(ctx) {
   async function loadFriends() {
     if (!online.token) return;
     const r = await api.call('GET', '/api/friends');
-    if (r && r.status === 200) { S.fr = r.json; renderFriends(); badge(); }
+    if (r && r.status === 200) { S.fr = r.json; if (!(S.tab === 'msgs') && !typing()) renderFriends(); badge(); }
   }
-  function badge() { const n = S.fr ? S.fr.incoming.length : 0; const b = $('tbFrBadge'); if (b) { b.textContent = n || ''; b.classList.toggle('on', n > 0); } }
+  function badge() { totalBadge(); }
   function renderFriends() {
-    const box = $('frBody'), d = S.fr;
+    const box = $('frBody');
+    box.innerHTML = `<div class="seg fr-tabs"><button data-tab="friends" class="${S.tab !== 'msgs' ? 'sel' : ''}">Friends</button><button data-tab="msgs" class="${S.tab === 'msgs' ? 'sel' : ''}">Messages${S.unread ? `<b class="tabn">${S.unread}</b>` : ''}</button></div><div id="frPane"></div>`;
+    for (const b of box.querySelectorAll('[data-tab]')) b.onclick = () => { audio.sfx.click(); S.tab = b.dataset.tab; S.chat = null; renderFriends(); if (S.tab === 'msgs') loadConvs(); };
+    if (S.tab === 'msgs') renderMessages($('frPane')); else renderFriendsTab($('frPane'));
+  }
+  function renderFriendsTab(box) {
+    const d = S.fr;
     if (!online.token) { box.innerHTML = '<p class="stage-note">Sign in (or start an online game once) to use friends.</p>'; return; }
     if (!d) { box.innerHTML = '<p class="stage-note">Loading...</p>'; return; }
     const canInvite = isLeader() && partySize() < 3 && !S.search;
@@ -150,6 +158,7 @@ export function initSocial(ctx) {
       if (kind === 'friend') {
         if (pres !== 'offline' && canInvite && !(S.party && S.party.members.some((m) => m.id === f.id))) btns += `<button class="btn sm" data-inv="${esc(f.id)}">INVITE</button>`;
         if (f.joinable && !S.party) btns += `<button class="btn sm green" data-join="${esc(f.id)}">JOIN</button>`;
+        btns += `<button class="btn sm" data-msg="${esc(f.id)}" data-name="${esc(f.name)}">MESSAGE</button>`;
         btns += `<button class="icon-btn" data-rm="${esc(f.id)}" title="Remove friend">${icon('close', 18)}</button>`;
       } else if (kind === 'in') btns = `<button class="btn sm green" data-acc="${esc(f.id)}">ACCEPT</button><button class="btn sm red" data-dec="${esc(f.id)}">DECLINE</button>`;
       else btns = `<button class="icon-btn" data-rm="${esc(f.id)}" title="Cancel request">${icon('close', 18)}</button>`;
@@ -171,6 +180,7 @@ export function initSocial(ctx) {
       $('frMsg').textContent = S.msg.text; $('frMsg').className = `fr-msg ${S.msg.cls}`;
       if (good) { $('frAdd').value = ''; loadFriends(); }
     };
+    for (const b of box.querySelectorAll('[data-msg]')) b.onclick = () => { audio.sfx.click(); openChat(b.dataset.msg, b.dataset.name); };
     for (const b of box.querySelectorAll('[data-inv]')) b.onclick = async () => { audio.sfx.click(); await ensureOnline().catch(() => {}); net.send({ t: 'p_invite', id: b.dataset.inv }); };
     for (const b of box.querySelectorAll('[data-join]')) b.onclick = () => { audio.sfx.click(); const f = d.friends.find((x) => x.id === b.dataset.join); toast(`Ask ${f ? f.name : 'your friend'} to invite you`); };
     for (const b of box.querySelectorAll('[data-acc]')) b.onclick = async () => { audio.sfx.click(); await api.call('POST', '/api/friends/respond', { id: b.dataset.acc, accept: true }); loadFriends(); };
@@ -184,11 +194,78 @@ export function initSocial(ctx) {
   async function openFriends() {
     audio.sfx.click();
     if (!online.token || !net.connected) { try { await ensureOnline(); } catch (e) { toast(String(e.message || e)); } }
-    renderFriends(); show('friends', true); loadFriends();
+    S.tab = S.tab || 'friends'; renderFriends(); show('friends', true); loadFriends(); loadConvs();
     clearInterval(S.frTimer); S.frTimer = setInterval(() => { if (!$('friends').classList.contains('hidden')) loadFriends(); else clearInterval(S.frTimer); }, 12000);
   }
   $('tbFriends').onclick = openFriends;
   $('frClose').onclick = () => { audio.sfx.click(); show('friends', false); clearInterval(S.frTimer); };
+
+  // ------------------------------------------------------------------------------------------ private messages
+  const ago = (t) => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? 'now' : s < 3600 ? `${Math.floor(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h` : `${Math.floor(s / 86400)} d`; };
+  const typing = () => !!document.activeElement && ['frAdd', 'dmInput'].includes(document.activeElement.id);
+  function totalBadge() { const n = (S.fr ? S.fr.incoming.length : 0) + (S.unread || 0); const b = $('tbFrBadge'); if (b) { b.textContent = n || ''; b.classList.toggle('on', n > 0); } }
+  async function loadConvs() {
+    if (!online.token) return;
+    const r = await api.call('GET', '/api/dm');
+    if (r && r.status === 200) { S.convs = r.json.conversations; S.unread = r.json.unread; totalBadge(); if ($('friends') && !$('friends').classList.contains('hidden') && S.tab === 'msgs' && !S.chat) renderFriends(); }
+  }
+  function renderMessages(pane) {
+    if (S.chat) return renderChat(pane);
+    const list = S.convs || [];
+    pane.innerHTML = list.length ? list.map((c) => `<button class="dm-conv" data-id="${esc(c.with.id)}" data-name="${esc(c.with.name)}"><i class="dot ${c.with.online ? 'lobby' : 'offline'}"></i><b>${esc(c.with.name)}</b><span>${esc(c.last.mine ? 'You: ' : '')}${esc(c.last.text)}</span><em>${esc(ago(c.last.at))}</em>${c.unread ? `<u>${c.unread}</u>` : ''}</button>`).join('')
+      : '<p class="stage-note">No conversations yet. Open a friend and press MESSAGE.</p>';
+    for (const b of pane.querySelectorAll('.dm-conv')) b.onclick = () => openChat(b.dataset.id, b.dataset.name);
+  }
+  async function openChat(id, name) {
+    S.tab = 'msgs'; S.chat = { id, name, msgs: [], more: false };
+    if ($('friends').classList.contains('hidden')) { show('friends', true); }
+    renderFriends();
+    const r = await api.call('GET', `/api/dm/${encodeURIComponent(id)}`);
+    if (r && r.status === 200 && S.chat && S.chat.id === id) { S.chat.msgs = r.json.messages; S.chat.more = r.json.more; paintChat(); S.unread = Math.max(0, (S.unread || 0) - ((S.convs || []).find((c) => c.with.id === id) || { unread: 0 }).unread); if (S.convs) { const c = S.convs.find((x) => x.with.id === id); if (c) c.unread = 0; } totalBadge(); }
+  }
+  function renderChat(pane) {
+    const c = S.chat, isFr = S.fr && S.fr.friends.some((f) => f.id === c.id);
+    pane.innerHTML = `<div class="dm-head"><button class="icon-btn" id="dmBack" title="Back">${icon('close', 18)}</button><b>${esc(c.name)}</b><span class="grow"></span>${isFr ? '' : '<small>Not friends</small>'}<button class="btn sm" id="dmReport">REPORT</button><button class="btn sm red" id="dmBlock">BLOCK</button></div>`
+      + `<div class="dm-list" id="dmList"></div><form class="dm-form" id="dmForm"><input id="dmInput" maxlength="300" placeholder="Write a message" autocomplete="off"><button class="btn sm go" type="submit">SEND</button></form><p class="fr-msg" id="dmMsg"></p>`;
+    $('dmBack').onclick = () => { S.chat = null; renderFriends(); loadConvs(); };
+    $('dmForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const v = $('dmInput').value.trim(); if (!v) return;
+      $('dmInput').value = '';
+      const r = await api.call('POST', `/api/dm/${encodeURIComponent(c.id)}`, { text: v });
+      if (!r || r.status !== 200) { $('dmMsg').textContent = (r && r.json && r.json.message) || 'Could not reach the server'; $('dmMsg').className = 'fr-msg bad'; $('dmInput').value = v; } else $('dmMsg').textContent = '';
+      // the live 'dm' event paints the sent message
+    };
+    $('dmBlock').onclick = async () => {
+      if (!(await dialog({ title: 'BLOCK PLAYER', message: `Block ${c.name}? They will be removed from your friends and cannot message or invite you.`, yes: 'BLOCK', no: 'CANCEL', danger: true }))) return;
+      await api.call('POST', '/api/block', { id: c.id }); S.chat = null; S.tab = 'friends'; loadFriends(); toast('Player blocked');
+    };
+    $('dmReport').onclick = async () => {
+      const last = [...c.msgs].reverse().find((m) => m.from === c.id);
+      const reason = await dialog({ title: 'REPORT PLAYER', message: `Tell us what is wrong with ${c.name}'s messages. A moderator reads the last messages of the conversation.`, yes: 'SEND REPORT', no: 'CANCEL', input: { placeholder: 'Reason', max: 150 } });
+      if (!reason) return;
+      const r = await api.call('POST', '/api/dm/report', { id: c.id, msg: last ? last.id : 0, reason: typeof reason === 'string' ? reason : '' });
+      toast(r && r.status === 200 ? 'Report sent, thank you' : 'Could not send the report');
+    };
+    paintChat();
+    setTimeout(() => { const i = $('dmInput'); if (i) i.focus(); }, 50);
+  }
+  function paintChat() {
+    const l = $('dmList'); if (!l || !S.chat) return;
+    l.innerHTML = S.chat.msgs.length ? S.chat.msgs.map((m) => `<div class="dm-msg ${m.from === meId() ? 'mine' : ''}"><span>${esc(m.text)}</span><em>${esc(ago(m.at))}</em></div>`).join('') : '<p class="stage-note">Say hello.</p>';
+    l.scrollTop = l.scrollHeight;
+  }
+  net.on('dm', (m) => {
+    const other = m.from.id === meId() ? m.to : m.from.id;
+    if (S.chat && S.chat.id === other) {
+      S.chat.msgs.push({ id: m.id, from: m.from.id, text: m.text, at: m.at }); paintChat();
+      if (m.from.id !== meId()) api.call('POST', '/api/dm/read', { id: other });
+    } else if (m.from.id !== meId()) {
+      S.unread = (S.unread || 0) + 1; totalBadge(); audio.sfx.power();
+      toast(`${m.from.name}: ${m.text.length > 48 ? m.text.slice(0, 48) + '…' : m.text}`);
+      if (S.convs) loadConvs();
+    }
+  });
 
   // ---------------------------------------------------------------------------------------------- net events
   const also = (type, fn) => net.also(type, fn);
@@ -219,14 +296,14 @@ export function initSocial(ctx) {
   also('queue_cancelled', () => { if (S.search) closeSearch(); });
   also('match', (m) => {
     if (!S.search) return;
-    S.matched = true;
+    S.matched = true; S.search.phase = 1;
     S.search.note = 'MATCH FOUND';
     if (m.teams) { S.search.teams = m.teams; S.search.mine = m.teams.findIndex((t) => t.some((p) => online.player && p.name === online.player.name)); }
     renderSearch(); const n = $('soNote'); if (n) { n.textContent = 'MATCH FOUND'; n.classList.add('found'); }
     audio.sfx.power();
   });
-  also('start', () => closeSearch());
-  also('authed', () => { renderParty(); loadFriends(); });
+  also('start', () => { if (!S.search) return; S.search.phase = 2; S.search.note = 'GO!'; renderSearch(); const n = $('soNote'); if (n) n.classList.add('found'); setTimeout(closeSearch, 500); });
+  also('authed', () => { renderParty(); loadFriends(); loadConvs(); });
   let retry = 0;
   also('close', () => {
     S.party = null; if (S.search) closeSearch(); renderParty(); renderModeCard();

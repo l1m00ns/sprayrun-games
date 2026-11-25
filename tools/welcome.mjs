@@ -31,7 +31,7 @@ try {
   await page.evaluate(() => document.querySelector('#obBody .obcard[data-v="fr"]').click());
   await sleep(700);
   ok('choosing French translates the flow immediately', /BIENVENUE/.test(await txt('#obBody')), (await txt('#obBody')).replace(/\n/g, ' ').slice(0, 60));
-  ok('the top bar follows (JOUER / BOUTIQUE)', /JOUER/.test(await txt('#tbTabs')) && /BOUTIQUE/.test(await txt('#tbTabs')));
+  ok('the top bar follows (JOUER / BOUTIQUE)', /JOUER/.test(await page.evaluate(() => document.getElementById('tbTabs').textContent)) && /BOUTIQUE/.test(await page.evaluate(() => document.getElementById('tbTabs').textContent)));
   await page.evaluate(() => document.getElementById('obNext').click()); await sleep(500);
   await shot('2-look');
   await page.evaluate(() => document.querySelector('#obBody .obcard[data-v="low"]').click()); await sleep(300);

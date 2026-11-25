@@ -1225,6 +1225,24 @@ function setupUI() {
   }, true);
   $('secReset').onclick = () => { audio.sfx.click(); resetCheats(); applyCheatVisuals(); drawSecret(); };
   konamiListener(() => { const tg = document.activeElement && document.activeElement.tagName; if (tg === 'INPUT' || tg === 'TEXTAREA') return; openSecret(true); });
+  $('btnExport').onclick = async () => {
+    if (!online.token) { toast('Sign in first'); return; }
+    const r = await api.call('GET', '/api/me/export');
+    if (!r || r.status !== 200) { toast('Could not export your data'); return; }
+    const url = URL.createObjectURL(new Blob([JSON.stringify(r.json, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'reverse-surfers-my-data.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast('Your data was downloaded');
+  };
+  $('btnDeleteAcct').onclick = async () => {
+    if (!online.token || !online.player) { toast('There is no online account to delete'); return; }
+    const hasPw = !!online.player.hasAccount;
+    const v = await dialog({ title: 'DELETE ACCOUNT', message: hasPw ? 'This permanently deletes your account, progress, friends and messages. Enter your password to confirm.' : 'This permanently deletes your guest account, progress, friends and messages. Type DELETE to confirm.', yes: 'DELETE FOREVER', no: 'KEEP MY ACCOUNT', danger: true, input: { placeholder: hasPw ? 'Password' : 'DELETE', password: hasPw, max: 72 } });
+    if (!v) return;
+    const r = await api.call('POST', '/api/me/delete', hasPw ? { password: v } : { confirm: v });
+    if (!r || r.status !== 200) { toast((r && r.json && r.json.message) || 'Could not delete the account'); return; }
+    try { net.close(); localStorage.clear(); } catch (e) { /* storage unavailable */ }
+    location.reload();
+  };
   $('btnReset').onclick = async () => { if (await confirmDlg('This erases coins, characters, upgrades and records stored on this device.', { danger: true, yes: 'ERASE' })) { resetSave(); location.reload(); } };
   initHubUI();
   onboarding = createOnboarding({ save, persist, applySettings, click: () => audio.sfx.click(), openAccount: () => { hubUI.setBarVisible(true); hubUI.open('account'); }, done: () => { renderMenu(); } });
@@ -1326,30 +1344,37 @@ function pollGamepad() {
 // ------------------------------------------------------------------ multiplayer
 const escapeHtml = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function nameTag(name) {
+function nameTag(name, color = '#fff') {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 64;
   const x = c.getContext('2d');
   x.font = '34px "Lilita One", sans-serif';
   x.textAlign = 'center';
   x.lineWidth = 8; x.strokeStyle = 'rgba(10,16,48,0.9)'; x.strokeText(name, 128, 44);
-  x.fillStyle = '#fff'; x.fillText(name, 128, 44);
+  x.fillStyle = color; x.fillText(name, 128, 44);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), applyBend(new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, fog: false })));
   m.renderOrder = 5; m.frustumCulled = false;
   return fxLayer(m);
 }
+function isAlly(id) {
+  const room = mp.room;
+  if (room && room.teamMode) { const me = room.players.find((p) => p.id === net.id), him = room.players.find((p) => p.id === id); if (me && him && me.team != null && me.team === him.team) return true; }
+  const party = social && social.party; if (party && room) { const him = room.players.find((p) => p.id === id); if (him && party.members.some((m) => m.name === him.name)) return true; }
+  return false;
+}
 function ensureGhost(id) {
   let g = mp.ghosts.get(id);
   const ps = mp.players.get(id);
-  if (g && g.charId === ps.char) return g;
+  const solid = isAlly(id); // your team and your party are shown as real runners, everybody else as ghosts
+  if (g && g.charId === ps.char && g.solid === solid) return g;
   if (g) scene.remove(g.ch.root, g.tag);
   const def = CHARACTERS.find((c) => c.id === ps.char) || CHARACTERS[0];
-  const ch = buildCharacter(def, CHAR_SCALE, { ghost: true });
-  const tag = nameTag(ps.name);
+  const ch = buildCharacter(def, CHAR_SCALE, { ghost: !solid });
+  const tag = nameTag(ps.name, solid ? '#7ee0a0' : undefined);
   scene.add(ch.root, tag);
-  g = { ch, tag, charId: ps.char };
+  g = { ch, tag, charId: ps.char, solid };
   mp.ghosts.set(id, g);
   return g;
 }

@@ -16,22 +16,22 @@ export default function GameUI() {
         <div id="topbar" className="hidden">
           <button className="tb-logo" id="tbLogo" aria-label="Home"><img src="/logo.png" alt="Reverse Surfers" /></button>
           <nav id="tbTabs">
-            <button className="tb-tab sel" data-tab="play"><span className="tb-ic" data-ic="home"></span>PLAY</button>
-            <button className="tb-tab" data-tab="shop"><span className="tb-ic" data-ic="shop"></span>SHOP</button>
-            <button className="tb-tab" data-tab="career"><span className="tb-ic" data-ic="career"></span>CAREER</button>
-            <button className="tb-tab" data-tab="leaderboard"><span className="tb-ic" data-ic="ranking"></span>LEADERBOARD</button>
-            <button className="tb-tab" data-tab="events"><span className="tb-ic" data-ic="events"></span>EVENTS<i className="tb-badge" id="tbEvBadge"></i></button>
-            <button className="tb-tab" data-tab="updates"><span className="tb-ic" data-ic="updates"></span>UPDATES<i className="tb-badge" id="tbUpBadge"></i></button>
-            <button className="tb-tab" data-tab="support"><span className="tb-ic" data-ic="support"></span>SUPPORT</button>
+            <button className="tb-tab sel" data-tab="play"><span className="tb-ic" data-ic="home" data-duo="" data-s="22"></span><span className="tb-lbl">PLAY</span></button>
+            <button className="tb-tab" data-tab="shop"><span className="tb-ic" data-ic="shop" data-duo="" data-s="22"></span><span className="tb-lbl">SHOP</span></button>
+            <button className="tb-tab" data-tab="career"><span className="tb-ic" data-ic="career" data-duo="" data-s="22"></span><span className="tb-lbl">CAREER</span></button>
+            <button className="tb-tab" data-tab="leaderboard"><span className="tb-ic" data-ic="ranking" data-duo="" data-s="22"></span><span className="tb-lbl">LEADERBOARD</span></button>
+            <button className="tb-tab" data-tab="events"><span className="tb-ic" data-ic="events" data-duo="" data-s="22"></span><span className="tb-lbl">EVENTS</span><i className="tb-badge" id="tbEvBadge"></i></button>
+            <button className="tb-tab" data-tab="updates"><span className="tb-ic" data-ic="updates" data-duo="" data-s="22"></span><span className="tb-lbl">UPDATES</span><i className="tb-badge" id="tbUpBadge"></i></button>
+            <button className="tb-tab" data-tab="support"><span className="tb-ic" data-ic="support" data-duo="" data-s="22"></span><span className="tb-lbl">SUPPORT</span></button>
           </nav>
           <div className="tb-right">
             <span className="pill online" id="mOnline"><span className="dotlive off"></span>Offline</span>
             <div className="pill tb-coins"><span className="coin-i"></span><span id="mCoins">0</span></div>
             <button className="tb-level" id="tbLevel" title="Career"><b id="tbLv">LV 1</b><span className="tb-xp"><i id="tbXp"></i></span></button>
             <button className="tb-acct" id="tbAcct"><span className="tb-avatar" id="tbAvatar">?</span><b id="tbName">Sign in</b></button>
-            <button className="btn round sm" id="tbFriends" title="Friends"><span data-ic="user" data-s="22"></span><i className="tb-badge" id="tbFrBadge"></i></button>
+            <button className="btn round sm" id="tbFriends" title="Friends"><span data-ic="users" data-s="22"></span><i className="tb-badge" id="tbFrBadge"></i></button>
             <button className="btn round sm" id="tbLang" title="Language"><img id="tbLangFlag" className="flag-btn" src="/flags/gb.svg" alt="" /><b id="tbLangCode">EN</b></button>
-            <button className="btn round sm" id="btnSettings" title="Settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.4a.5.5 0 0 0-.6-.2l-2.5 1a7.4 7.4 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.4a.5.5 0 0 0 .1.6L4.6 11a7.7 7.7 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.4c.1.2.4.3.6.2l2.5-1c.5.4 1.1.7 1.7 1l.4 2.6c0 .2.2.4.5.4h4c.3 0 .5-.2.5-.4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1c.2.1.5 0 .6-.2l2-3.4a.5.5 0 0 0-.1-.6zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg></button>
+            <button className="btn round sm" id="btnSettings" title="Settings"><span data-ic="settings" data-s="22"></span></button>
           </div>
         </div>
         <div id="hubpage" className="hidden"><div id="hubBody"></div></div>
@@ -142,6 +142,7 @@ export default function GameUI() {
           <div className="tabs" id="setTabs"></div>
           <div id="setBody"></div>
           <p className="sec-hint" id="setVer"></p>
+          <p className="legal-row"><a href="/terms" target="_blank" rel="noopener">Terms of Service</a> · <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a> &nbsp; <button className="linkbtn" id="btnExport">Download my data</button> · <button className="linkbtn danger" id="btnDeleteAcct">Delete my account</button></p>
           <div className="row"><button className="btn purple sm hidden" id="btnSecret">SECRET MENU</button><button className="btn red sm" id="btnReset">RESET PROGRESS</button><button className="btn" id="btnSetClose">BACK</button></div></div></div>
 
         <div id="dlg" className="screen modal hidden" role="dialog" aria-modal="true"><div className="panel dlg-panel">

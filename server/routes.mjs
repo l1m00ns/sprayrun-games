@@ -3,7 +3,7 @@ import { q } from './db.mjs';
 import { reply, readJson, authPlayer, clientIp } from './http.mjs';
 import { register, login, changePassword, signOutEverywhere, getCloud, putCloud, nameProblem, cleanName } from './accounts.mjs';
 import { shopView, buy, equip, claimAdvent, adventView, importLocal, stateOf, invOf } from './economy.mjs';
-import { profile, careerOf, accessProblem, ban, kick } from './players.mjs';
+import { profile, careerOf, accessProblem, ban, kick, sockets } from './players.mjs';
 import { eventStatus, ltmStatus, nowMs, ACHIEVEMENTS, levelOf, titleOf, COSMETICS, RUNNERS, dailyInfo } from './catalog.mjs';
 import { UPDATES } from './updates.mjs';
 import { aiStatus } from './ai.mjs';
@@ -11,6 +11,8 @@ import * as support from './support.mjs';
 import * as appeals from './appeals.mjs';
 import * as devices from './devices.mjs';
 import * as social from './social.mjs';
+import * as messages from './messages.mjs';
+import * as privacy from './privacy.mjs';
 import * as ipintel from './ipintel.mjs';
 import { playerStats, globalStats } from './stats.mjs';
 import { rankedMinSeconds, BADGES } from './catalog.mjs';
@@ -159,6 +161,35 @@ export async function routeV2(req, res, url, me, route) {
     else if (route === 'POST /api/friends/respond') r = social.respond(me, String(body.id || ''), !!body.accept);
     else if (route === 'POST /api/friends/remove') r = social.removeFriend(me, String(body.id || ''));
     if (r) { reply(res, r.ok ? 200 : 400, r); return true; }
+  }
+
+  // ---------------------------------------------------------------------------------------- data rights
+  if (route === 'GET /api/me/export' || route === 'POST /api/me/delete') {
+    if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }
+    if (route === 'GET /api/me/export') {
+      res.setHeader('Content-Disposition', 'attachment; filename="reverse-surfers-my-data.json"');
+      reply(res, 200, privacy.exportData(me.id));
+      return true;
+    }
+    const body = await readJson(req, 600);
+    const r = privacy.deleteAccount(me.id, body);
+    if (r.ok) { const set = sockets.get(me.id); if (set) for (const ws of [...set]) try { ws.close(4000, 'account deleted'); } catch { /* closing */ } }
+    reply(res, r.ok ? 200 : 400, r);
+    return true;
+  }
+
+  // ------------------------------------------------------------------------------------ private messages
+  if (route.startsWith('GET /api/dm') || route.startsWith('POST /api/dm') || route.startsWith('GET /api/blocks') || route.startsWith('POST /api/block') || route.startsWith('POST /api/unblock')) {
+    if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }
+    if (route === 'GET /api/dm') { reply(res, 200, messages.conversations(me)); return true; }
+    if (route === 'GET /api/blocks') { reply(res, 200, messages.blockList(me)); return true; }
+    const dm = /^\/api\/dm\/([A-Za-z0-9-]{8,64})$/.exec(url.pathname);
+    if (dm && req.method === 'GET') { const r = messages.history(me, dm[1], Number(url.searchParams.get('before')) || 0); reply(res, r.ok ? 200 : 403, r); return true; }
+    if (dm && req.method === 'POST') { const body = await readJson(req, 1500); const r = messages.send(me, dm[1], body.text); reply(res, r.ok ? 200 : r.error === 'rate' ? 429 : 400, r); return true; }
+    if (route === 'POST /api/dm/read') { const body = await readJson(req, 300); reply(res, 200, messages.markRead(me, String(body.id || ''))); return true; }
+    if (route === 'POST /api/dm/report') { const body = await readJson(req, 600); const r = messages.report(me, String(body.id || ''), body.msg, body.reason); reply(res, r.ok ? 200 : 400, r); return true; }
+    if (route === 'POST /api/block') { const body = await readJson(req, 300); const r = messages.block(me, String(body.id || '')); reply(res, r.ok ? 200 : 400, r); return true; }
+    if (route === 'POST /api/unblock') { const body = await readJson(req, 300); reply(res, 200, messages.unblock(me, String(body.id || ''))); return true; }
   }
 
   // ---------------------------------------------------------------------------------------- support

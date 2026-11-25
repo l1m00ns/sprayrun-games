@@ -203,11 +203,7 @@
 .sec-hint { flex: 1; text-align: center; font: 600 13px var(--body); opacity: .7; }
 kbd { display: inline-block; min-width: 22px; padding: 1px 7px; border-radius: 7px; border: 1px solid rgba(255,255,255,.35); border-bottom-width: 3px; background: rgba(255,255,255,.1); font: 700 13px/1.4 var(--body); text-align: center; }
 
-/* ---------- Iconsax line icons + board icon */
-.tb-ic { display: inline-block; vertical-align: -3px; margin-right: 6px; opacity: .85; line-height: 0; }
-.tb-ic svg { width: 18px; height: 18px; stroke-width: 1.5; }
-.tb-tab.sel .tb-ic { opacity: 1; }
-@media (max-width: 1500px) { .tb-ic { display: none; } }
+/* ---------- board icon */
 #h-boardBtn .board-ic { display: grid; place-items: center; line-height: 0; filter: drop-shadow(0 3px 0 rgba(0,40,80,.45)); }
 #h-boardBtn .board-ic svg { width: 66px; height: 66px; }
 
@@ -281,3 +277,54 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 7px; border-radius: 7
 #h-mp .tm { display: flex; justify-content: space-between; gap: 10px; padding: 4px 8px; margin-bottom: 4px; border-radius: 8px; background: rgba(0,0,0,.4); font: 400 14px var(--font); } #h-mp .tm .a b { color: #7ee0a0; } #h-mp .tm .b b { color: #ff9aa8; }
 .lob-row.team { background: rgba(255,255,255,.16); }
 @media (max-height: 760px) { .modecard .mart { width: 80px; height: 50px; } .mc-txt b { font-size: 21px; } .pslot { width: 46px; height: 46px; } .pslot b { top: 50px; } #partyStrip { margin-bottom: 12px; } }
+
+/* ---------- launch sequence: ring, then Searching > Preparing > Launch */
+.so-ring { position: relative; width: 112px; height: 112px; margin: 0 auto 8px; display: grid; place-items: center; }
+.so-ring i { position: absolute; inset: 0; border-radius: 50%; border: 6px solid rgba(255,255,255,.14); border-top-color: var(--yellow); animation: spin 1s linear infinite; }
+.so-ring.found i { border-color: #42e07a; animation: none; } .so-ring.go i { border-color: #42e07a; animation: ringpop .45s ease-out; }
+.so-ring span { font: 400 30px var(--font); color: var(--yellow); font-variant-numeric: tabular-nums; }
+@keyframes ringpop { from { transform: scale(.8); opacity: .4; } to { transform: none; opacity: 1; } }
+.so-steps { display: flex; justify-content: center; gap: 6px; list-style: none; margin: 4px 0 10px; padding: 0; }
+.so-steps li { padding: 3px 14px; border-radius: 99px; font: 700 13px/20px var(--body); background: rgba(255,255,255,.08); opacity: .5; }
+.so-steps li.on { opacity: 1; background: var(--yellow); color: #3a2400; } .so-steps li.done { opacity: .9; background: rgba(66,224,122,.25); }
+.so-art .mart { width: 150px; }
+
+/* ---------- private messages */
+.fr-tabs { margin-bottom: 10px; } .fr-tabs .tabn { margin-left: 6px; }
+.dm-conv { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 12px; border: 0; background: rgba(255,255,255,.07); color: #fff; margin: 6px 0; cursor: pointer; text-align: left; } .dm-conv:hover { background: rgba(255,255,255,.14); }
+.dm-conv .dot { width: 10px; height: 10px; border-radius: 50%; background: #6b7280; flex: none; } .dm-conv .dot.lobby { background: #42e07a; }
+.dm-conv b { font: 400 18px var(--font); } .dm-conv span { flex: 1; opacity: .65; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .dm-conv em { font-style: normal; opacity: .5; font-size: 12px; } .dm-conv u { min-width: 20px; height: 20px; border-radius: 99px; background: var(--pink); text-align: center; font: 700 12px/20px var(--body); text-decoration: none; padding: 0 6px; }
+.dm-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; } .dm-head b { font: 400 22px var(--font); } .dm-head .grow { flex: 1; } .dm-head small { opacity: .6; }
+.dm-list { height: 36vh; min-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 14px; background: rgba(6,10,30,.45); }
+.dm-msg { max-width: 78%; align-self: flex-start; padding: 7px 12px; border-radius: 14px 14px 14px 4px; background: rgba(255,255,255,.13); font-weight: 600; overflow-wrap: anywhere; user-select: text; }
+.dm-msg.mine { align-self: flex-end; border-radius: 14px 14px 4px 14px; background: #2f6fe0; } .dm-msg em { display: block; font-style: normal; font-size: 11px; opacity: .55; margin-top: 2px; }
+.dm-form { display: flex; gap: 8px; margin-top: 8px; } .dm-form input { flex: 1; padding: 9px 12px; border-radius: 12px; border: 2px solid var(--line); background: rgba(8,12,34,.6); color: #fff; font: 600 16px var(--body); outline: none; user-select: text; } .dm-form input:focus { border-color: var(--yellow); }
+
+/* ---------- legal links in Settings */
+.legal-row { margin: 8px 0 0; font-size: 14px; opacity: .85; text-align: center; } .legal-row a { color: var(--yellow); }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--yellow); font: inherit; cursor: pointer; text-decoration: underline; } .linkbtn.danger { color: #ff9aa8; }
+
+
+/* ---------- modern top bar: icon chips, outline icon that turns solid when selected, labels collapse on narrow screens */
+.tb-tab { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px 0 11px; border-radius: 14px; border: 1px solid transparent; background: transparent; font: 400 17px/1 var(--font); letter-spacing: .5px; color: rgba(255,255,255,.72); transition: background .15s, color .15s, border-color .15s; }
+.tb-tab::after { display: none; }
+.tb-tab:hover { background: rgba(255,255,255,.09); color: #fff; }
+.tb-tab.sel { background: rgba(255,210,63,.16); border-color: rgba(255,210,63,.42); color: var(--yellow); }
+.tb-ic { position: relative; display: grid; place-items: center; width: 24px; height: 24px; flex: none; opacity: 1; margin: 0; vertical-align: baseline; }
+.tb-ic i { display: block; width: 22px; height: 22px; line-height: 0; font-style: normal; }
+.tb-ic svg { display: block; width: 22px; height: 22px; }
+.tb-ic .ic-bold, .tb-tab.sel .tb-ic .ic-lin { display: none; } .tb-tab.sel .tb-ic .ic-bold { display: block; }
+.tb-lbl { display: block; padding-top: 2px; } /* Lilita One sits a little high: this puts the text on the icon's optical centre */
+.tb-tab .tb-badge { position: absolute; top: 2px; right: 3px; margin: 0; min-width: 16px; height: 16px; padding: 0 5px; font: 700 10px/16px var(--body); vertical-align: baseline; }
+.tb-tab .tb-badge.on { display: block; }
+.tb-right .btn.round.sm, .tb-right .btn.round { width: 44px; height: 44px; border-radius: 14px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); box-shadow: none; text-shadow: none; padding: 0; color: #fff; transition: background .15s, border-color .15s; }
+.tb-right .btn.round.sm:hover { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.3); filter: none; transform: none; }
+.tb-right .btn.round.sm:active { transform: scale(.96); box-shadow: none; }
+.tb-right .btn.round span[data-ic] { display: block; line-height: 0; } .tb-right .btn.round svg { display: block; width: 22px; height: 22px; fill: none; filter: none; }
+.tb-right .flag-btn { width: 28px; height: 20px; }
+#tbFriends .tb-badge, #tbLang .tb-badge { top: -5px; right: -5px; }
+/* every icon inside a button is a block box centred by its parent: no more baseline drift */
+button svg[aria-hidden], .icon-btn svg { display: block; }
+.icon-btn { display: inline-grid; place-items: center; }
+@media (max-width: 1450px) { .tb-tab:not(.sel) .tb-lbl { display: none; } .tb-tab:not(.sel) { padding: 0 11px; } #tbTabs { gap: 4px; } }
+@media (max-width: 1100px) { .tb-tab.sel .tb-lbl { display: none; } .tb-tab, .tb-tab:not(.sel) { padding: 0 11px; } }

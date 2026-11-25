@@ -1,6 +1,17 @@
 // Update history shown in the game's "Updates" tab. Newest first. Edit this file when you ship something.
 export const UPDATES = [
   {
+    version: '1.5.0', date: '2026-11-25', title: 'Talk, trust, translate',
+    tags: ['social', 'legal'],
+    notes: [
+      'Private messages between friends, with unread counters, blocking and reporting. Your teammates now run as solid characters, everyone else stays a ghost.',
+      'Launching a match now shows a ring and three steps: Searching, Preparing, Launch.',
+      'Terms of Service and Privacy Policy pages, plus Download my data and Delete my account in Settings.',
+      'Translations fixed: switching between languages no longer leaves half of the screen in the previous one.',
+      'A cleaner top bar: outline icons that turn solid when selected, and labels that collapse on small screens.',
+    ],
+  },
+  {
     version: '1.4.0', date: '2026-11-25', title: 'Play together',
     tags: ['online', 'social'],
     notes: [
