@@ -164,6 +164,12 @@ try {
   const rt = await ana.ws.wait('rating', 8000);
   const rtDan = await dan.ws.wait('rating', 8000);
   ok('winners gain rating, losers lose it', rt.delta > 0 && rtDan.delta < 0 && rt.team === true, `${rt.delta} / ${rtDan.delta}`);
+  const lad = (await api('GET', '/api/me', null, ana.token)).json.player.ladders;
+  ok('each ladder keeps its own rating: Duos has 1 game and is provisional', lad && lad.duos.games === 1 && lad.duos.provisional === true && lad.solo.games === 0 && lad.trios.games === 0, JSON.stringify(lad && lad.duos));
+  ok('a provisional ladder moves faster than a settled one', rt.delta >= 24, `delta=${rt.delta}`);
+  const deep = await (await fetch(base + '/api/health?deep=1')).json();
+  ok('deep health reports the database, version and uptime', deep.ok && deep.db.ok && /^1\.\d+\.\d+-/.test(deep.version) && deep.uptime_s >= 0, JSON.stringify(deep).slice(0, 120));
+
 
   // ------------------------------------------------------------------------------------- trios, solo FFA, mixed groups
   const names = ['Gus', 'Hal', 'Ivy', 'Jon', 'Kim', 'Lea'], us = [];

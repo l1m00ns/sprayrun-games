@@ -32,6 +32,29 @@ export const COSMETICS = {
   'b_gold':     { slot: 'board', name: 'Midas Deck', price: 8000, rarity: 'epic', desc: 'Solid gold, naturally.' },
   'b_candy':    { slot: 'board', name: 'Candy Cane', price: 2500, rarity: 'epic', event: 'winterfest', desc: 'Red and white stripes.' },
   'b_aurora':   { slot: 'board', name: 'Aurora', price: 0, rarity: 'legendary', event: 'winterfest', exclusive: true, desc: 'Advent calendar exclusive (day 25).' },
+  // backpacks
+  'bg_cat':     { slot: 'bag', name: 'Cat Pouch', price: 1800, rarity: 'rare', desc: 'A small friend rides along.' },
+  'bg_rocket':  { slot: 'bag', name: 'Rocket Pack', price: 2600, rarity: 'rare', desc: 'Two boosters. Purely decorative, mostly.' },
+  'bg_guitar':  { slot: 'bag', name: 'Guitar Case', price: 2200, rarity: 'common', desc: 'Busker on the night line.' },
+  'bg_wings':   { slot: 'bag', name: 'Feather Wings', price: 7000, rarity: 'epic', desc: 'Light, white, a little dramatic.' },
+  'bg_cube':    { slot: 'bag', name: 'Neon Cube', price: 6000, rarity: 'epic', desc: 'A glowing cube that follows you.' },
+  'bg_cup':     { slot: 'bag', name: 'Cup Champion', price: 0, rarity: 'legendary', exclusive: true, tournament: 'weekly', desc: 'Weekly Cup winners only.' },
+  // auras (a glow around the runner)
+  'au_ember':   { slot: 'aura', name: 'Ember Ring', price: 3200, rarity: 'rare', desc: 'Slow orange embers circle your feet.' },
+  'au_frost':   { slot: 'aura', name: 'Frost Veil', price: 3200, rarity: 'rare', desc: 'A cold blue shimmer.' },
+  'au_volt':    { slot: 'aura', name: 'Volt Field', price: 7500, rarity: 'epic', desc: 'Crackling electric rings.' },
+  'au_royal':   { slot: 'aura', name: 'Royal Glow', price: 0, rarity: 'legendary', exclusive: true, tournament: 'weekly', desc: 'Weekly Cup top 3.' },
+  'au_dawn':    { slot: 'aura', name: 'Dawn Light', price: 0, rarity: 'epic', exclusive: true, tournament: 'daily', desc: 'Daily Sprint winners.' },
+  // run styles (how the runner moves)
+  'st_chill':   { slot: 'style', name: 'Chill', price: 1500, rarity: 'common', desc: 'Relaxed arms, easy stride.' },
+  'st_ninja':   { slot: 'style', name: 'Ninja', price: 4000, rarity: 'rare', desc: 'Arms swept back, low and fast.' },
+  'st_bounce':  { slot: 'style', name: 'Bounce', price: 3000, rarity: 'rare', desc: 'A springy, joyful stride.' },
+  'st_sprinter':{ slot: 'style', name: 'Sprinter', price: 4500, rarity: 'epic', desc: 'Track-star lean and pump.' },
+  // skins (a different look for the runner: skin tone, hair, eyes)
+  'sk_ocean':   { slot: 'skin', name: 'Ocean', price: 3500, rarity: 'rare', desc: 'Sea-blue skin and sun-bleached hair.' },
+  'sk_ghost':   { slot: 'skin', name: 'Spectre', price: 5000, rarity: 'epic', desc: 'Pale, glowing and a little eerie.' },
+  'sk_lava':    { slot: 'skin', name: 'Magma', price: 6500, rarity: 'epic', desc: 'Dark rock skin, molten hair.' },
+  'sk_crown':   { slot: 'skin', name: 'Champion Gold', price: 0, rarity: 'legendary', exclusive: true, tournament: 'weekly', desc: 'Weekly Cup champion.' },
   // trails
   't_sparks':   { slot: 'trail', name: 'Sparks', price: 1200, rarity: 'common', desc: 'A line of golden sparks.' },
   't_stars':    { slot: 'trail', name: 'Stardust', price: 2600, rarity: 'rare', desc: 'Twinkling stars in your wake.' },
@@ -62,7 +85,7 @@ export function eventStatus(id, t = nowMs()) {
 }
 export const eventActive = (id, t = nowMs()) => eventStatus(id, t).active;
 
-// LTM (limited time mode): "Gold Rush Duel". LTM_SCHEDULE=always (default) | weekend (Fri 18:00 -> Mon 06:00 UTC)
+// Limited-time event: "Neon Rush". LTM_SCHEDULE=always (default) | weekend (Fri 18:00 -> Mon 06:00 UTC)
 export function ltmStatus(t = nowMs()) {
   const mode = process.env.LTM_SCHEDULE || 'always';
   const d = new Date(t);
@@ -70,7 +93,7 @@ export function ltmStatus(t = nowMs()) {
   const weekend = (dow === 5 && h >= 18) || dow === 6 || dow === 0 || (dow === 1 && h < 6);
   const active = mode === 'always' || weekend || eventActive('winterfest', t);
   const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + ((8 - dow) % 7 || 7), 6); // next Monday 06:00
-  return { id: 'goldrush', name: 'Gold Rush Duel', active, schedule: mode, endsAt: active ? monday : null, desc: 'Mid-race the track warps into a walled arena: 2:00, one life, Gold Eagle only. Out of time = draw.' };
+  return { id: 'neonrush', name: 'Neon Rush', active, schedule: mode, endsAt: active ? monday : null, desc: 'The city goes dark and the track lights up: a free Double Score at the start, a magnet at 400 m, and neon rails everywhere. Play it offline from the play button.' };
 }
 
 // -------------------------------------------------------------------------------- advent calendar

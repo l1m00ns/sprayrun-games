@@ -1,7 +1,7 @@
 // The hub: Fortnite-style top bar + pages (Shop, Career, Leaderboard, Events/Advent, Updates, Support, Account).
 // Vanilla DOM like the rest of the engine UI. Everything it needs from the engine comes in through `ctx`.
 import * as C from './consts.js';
-import { OUTFITS, BOARDS, TRAILS } from './cosmetics.js';
+import { OUTFITS, BOARDS, TRAILS, SKINS, BAGS, AURAS } from './cosmetics.js';
 import { boardSVG } from './icons.js';
 import { fillIcons } from './iconsax.js';
 
@@ -34,6 +34,8 @@ const art = {
     return `<svg viewBox="0 -8 120 150" width="${size}" height="${size * 1.2}" aria-hidden="true">${body}<circle cx="60" cy="52" r="24" fill="${def.skin}"/>${hat}<circle cx="51" cy="54" r="2.6" fill="#1a1a1a"/><circle cx="69" cy="54" r="2.6" fill="#1a1a1a"/><path d="M52 63q8 6 16 0" stroke="#7a3b22" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
   },
   board(c) { return boardSVG(c); },
+  bag(c) { return `<svg viewBox="0 0 140 90" aria-hidden="true"><ellipse cx="70" cy="80" rx="34" ry="6" fill="rgba(0,0,0,.3)"/><rect x="44" y="14" width="52" height="62" rx="16" fill="${c}" stroke="rgba(0,0,0,.35)" stroke-width="2"/><rect x="54" y="44" width="32" height="22" rx="7" fill="rgba(0,0,0,.22)"/><path d="M54 20q16 8 32 0" stroke="rgba(255,255,255,.6)" stroke-width="3" fill="none"/></svg>`; },
+  aura(c) { return `<svg viewBox="0 0 140 90" aria-hidden="true"><ellipse cx="70" cy="60" rx="46" ry="14" fill="none" stroke="${c}" stroke-width="5" opacity=".9"/><ellipse cx="70" cy="60" rx="30" ry="9" fill="none" stroke="#fff" stroke-width="3" opacity=".7"/>${[28, 46, 70, 92, 110].map((x, i) => `<circle cx="${x}" cy="${44 - (i % 3) * 12}" r="${3 - (i % 2)}" fill="${c}"/>`).join('')}</svg>`; },
   trail(hex) {
     const col = '#' + hex.toString(16).padStart(6, '0');
     return `<svg viewBox="0 0 140 90" aria-hidden="true">${Array.from({ length: 16 }, (_, i) => `<circle cx="${14 + i * 7.4}" cy="${46 + Math.sin(i * 1.7) * 18}" r="${2 + (i % 4)}" fill="${col}" opacity="${0.35 + i / 24}"/>`).join('')}</svg>`;
@@ -46,6 +48,11 @@ export function initHub(ctx) {
   const { api, save, persist, audio, dialog, notify, CHARACTERS, BIOMES } = ctx;
   const body = $('hubBody'), page = $('hubpage'), bar = $('topbar');
   fillIcons(bar); // Iconsax line icons in the top bar
+  // On a portrait phone the tabs become a bottom navigation bar. A fixed element inside the (transformed) top bar would be anchored to it,
+  // so the nav is moved out of the bar into #ui on small screens and back on large ones.
+  { const nav = $('tbTabs'), mq = window.matchMedia('(max-width: 760px) and (min-height: 521px)');
+    const place = () => { if (mq.matches) { if (nav.parentElement !== $('ui')) { nav.classList.add('bottom'); $('ui').appendChild(nav); } } else if (nav.parentElement !== bar) { nav.classList.remove('bottom'); bar.insertBefore(nav, bar.querySelector('.tb-right')); } };
+    place(); mq.addEventListener('change', place); }
   let tab = 'play', timers = [], seq = 0;
   const clearTimers = () => { timers.forEach(clearInterval); timers = []; };
   const click = () => { try { audio.initAudio(); audio.sfx.click(); } catch (e) { /* audio not ready */ } };
@@ -67,15 +74,15 @@ export function initHub(ctx) {
     const wf = ev && ev.winterfest, ltm = ev && ev.ltm;
     $('tbEvBadge').classList.toggle('on', !!(wf && wf.active));
     $('tbEvBadge').textContent = wf && wf.active ? '!' : '';
-    const d = $('btnDuel');
-    if (d) d.classList.toggle('off', !(ltm && ltm.active));
+    const d = $('btnNeon');
+    if (d) d.classList.remove('off'); // the Neon Rush event is playable offline, even when the server is unreachable
     document.documentElement.classList.toggle('winter', !!(wf && wf.active && save.settings.seasonal !== false));
   }
   function setTab(t) {
     tab = t;
     for (const b of document.querySelectorAll('.tb-tab')) b.classList.toggle('sel', b.dataset.tab === t);
   }
-  function setBarVisible(on) { bar.classList.toggle('hidden', !on); if (!on) { page.classList.add('hidden'); clearTimers(); } }
+  function setBarVisible(on) { bar.classList.toggle('hidden', !on); $('tbTabs').classList.toggle('navhidden', !on); if (!on) { page.classList.add('hidden'); clearTimers(); } }
   function open(t) {
     clearTimers();
     const my = ++seq;
@@ -99,7 +106,7 @@ export function initHub(ctx) {
   const bindRetry = (t) => { const r = $('retry'); if (r) r.onclick = async () => { await ctx.reconnect(); open(t); }; };
 
   // ----------------------------------------------------------------------------------- SHOP
-  const SHOP_TABS = [['featured', 'Featured'], ['runners', 'Runners'], ['outfits', 'Outfits'], ['boardskins', 'Boards'], ['trails', 'Trails'], ['boards', 'Hoverboards'], ['upgrades', 'Upgrades'], ['bundles', 'Bundles']];
+  const SHOP_TABS = [['featured', 'Featured'], ['runners', 'Runners'], ['outfits', 'Outfits'], ['boardskins', 'Boards'], ['trails', 'Trails'], ['bags', 'Backpacks'], ['auras', 'Auras'], ['styles', 'Styles'], ['skins', 'Skins'], ['boards', 'Hoverboards'], ['upgrades', 'Upgrades'], ['bundles', 'Bundles']];
   let shopTab = 'featured';
   const RARITY = { common: '', rare: 'r-rare', epic: 'r-epic', legendary: 'r-legendary' };
   const UP_ART = { magnet: ['M', '#e0344a'], jetpack: ['J', '#ff9f1c'], sneakers: ['S', '#2ec4b6'], mult: ['2x', '#e3a21a'] };
@@ -110,6 +117,10 @@ export function initHub(ctx) {
       const id = it.id.split(':')[1];
       if (it.slot === 'outfit') return art.runner({ ...defOf(save.character), ...OUTFITS[id] });
       if (it.slot === 'board') return art.board(BOARDS[id]);
+      if (it.slot === 'bag') return art.bag(BAGS[id]);
+      if (it.slot === 'aura') return art.aura('#' + AURAS[id].color.toString(16).padStart(6, '0'));
+      if (it.slot === 'style') return art.icon(String(itemName(it)).slice(0, 2).toUpperCase(), '#29a8e6');
+      if (it.slot === 'skin') return art.runner({ ...defOf(save.character), ...SKINS[id] });
       return art.trail(TRAILS[id].color);
     }
     if (it.kind === 'upgrade') { const k = it.id.split(':')[1]; return art.icon(UP_ART[k][0], UP_ART[k][1]); }
@@ -138,6 +149,17 @@ export function initHub(ctx) {
     ctx.syncEconomy();
     refreshChrome();
     const inv = data.inv, wf = data.events && data.events.winterfest;
+    // Current loadout strip: what the runner is wearing right now, so the shop always shows the equipped set.
+    const eqChip = (slot, label, it) => `<div class="eqchip"><span class="eqart">${it ? itemArt(it) : ''}</span><span><small>${esc(label)}</small><b>${esc(it ? itemName(it) : '-')}</b></span></div>`;
+    const runnerDef = defOf(save.character);
+    const eqChips = [eqChip('char', 'Runner', { kind: 'runner', id: `runner:${save.character}`, cat: 'runners', name: runnerDef.name, desc: runnerDef.tag, rarity: 'common', price: 0 })];
+    for (const [slot, label] of [['outfit', 'Outfit'], ['board', 'Board'], ['bag', 'Backpack'], ['aura', 'Aura'], ['style', 'Style'], ['skin', 'Skin']]) {
+      const id = inv.equip && inv.equip[slot];
+      if (!id) continue;
+      const it = data.items.find((x) => x.slot === slot && x.id.split(':')[1] === id);
+      if (it) eqChips.push(eqChip(slot, label, it));
+    }
+    const loadout = `<div class="loadout" aria-label="Equipped items">${eqChips.join('')}</div>`;
     let items = data.items.filter((it) => visibleIn(it, shopTab));
     if (shopTab === 'runners') items.sort((a, b) => a.price - b.price);
     const cards = items.map((it) => {
@@ -155,7 +177,7 @@ export function initHub(ctx) {
     }).join('');
     const banner = shopTab === 'featured' && wf && wf.active ? `<div class="banner xmas"><div><h2>Winter Fest is on!</h2><p>Limited holiday cosmetics are in the shop until <b>${new Date(wf.endsAt - 1).toUTCString().slice(5, 16)}</b>. Open a door of the advent calendar every day.</p></div><button class="btn go" data-goto="events">OPEN CALENDAR</button></div>` : '';
     body.innerHTML = head('SHOP', 'Prices are set by the server. Everything you buy follows your account.', `<div class="pill"><span class="coin-i"></span><span>${fmt(save.coins)}</span></div>`)
-      + `<div class="subtabs">${SHOP_TABS.map(([id, n]) => `<button class="subtab ${id === shopTab ? 'sel' : ''}" data-st="${id}">${n}</button>`).join('')}</div>${banner}`
+      + loadout + `<div class="subtabs">${SHOP_TABS.map(([id, n]) => `<button class="subtab ${id === shopTab ? 'sel' : ''}" data-st="${id}">${n}</button>`).join('')}</div>${banner}`
       + (cards ? `<div class="sgrid">${cards}</div>` : '<div class="empty">Nothing here right now.</div>');
     for (const b of body.querySelectorAll('.subtab')) b.onclick = () => { click(); shopTab = b.dataset.st; open('shop'); };
     for (const b of body.querySelectorAll('[data-goto]')) b.onclick = () => { click(); open(b.dataset.goto); };
@@ -237,14 +259,14 @@ export function initHub(ctx) {
 
 
   // ----------------------------------------------------------------------------- LEADERBOARD
-  const BOARDS_L = [['classic', 'Classic'], ['nocoin', 'No Coin'], ['daily', 'Daily'], ['ranked', 'Ranked']];
+  const BOARDS_L = [['classic', 'Classic'], ['nocoin', 'No Coin'], ['daily', 'Daily'], ['guest', 'No account'], ['ranked', 'Ranked']];
   const PERIODS = [['all', 'All time'], ['week', 'This week'], ['day', 'Today']];
   const sel = { board: 'ranked', period: 'all' };
   async function pageBoard(my) {
     const d = await api.leaderboard(sel.board, sel.period);
     if (!live(my)) return;
     const you = api.online.player ? api.online.player.name : '';
-    const rows = d ? d.rows.map((r) => `<div class="rowx click ${r.name === you ? 'me' : ''}" data-name="${esc(r.name)}"><b class="pos">${r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : '#' + r.rank}</b><b>${esc(r.name)}</b>${r.tier ? `<span class="tag2">${r.tier}</span>` : ''}<span class="sp"></span><span class="num">${fmt(r.score)}</span>${r.dist != null ? `<span class="dim">${fmt(r.dist)} m</span>` : `<span class="dim">${r.wins}W / ${r.games}</span>`}</div>`).join('') : '';
+    const rows = d ? d.rows.map((r) => `<div class="rowx click ${r.name === you ? 'me' : ''}" data-name="${esc(r.name)}"><b class="pos">${r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : '#' + r.rank}</b><b>${esc(r.name)}${r.tag ? `<span class="ptag">#${esc(r.tag)}</span>` : ''}</b>${r.tier ? `<span class="tag2">${r.tier}</span>` : ''}<span class="sp"></span><span class="num">${fmt(r.score)}</span>${r.dist != null ? `<span class="dim">${fmt(r.dist)} m</span>` : `<span class="dim">${r.wins}W / ${r.games}</span>`}</div>`).join('') : '';
     const yours = d && d.you ? `<div class="banner" style="padding:12px 18px"><div><h2 style="font-size:24px">Your best</h2><p>${fmt(d.you.score)}${d.you.rank ? ` - rank #${d.you.rank}` : ''}</p></div></div>` : '';
     body.innerHTML = head('LEADERBOARD', 'Click a player to see their profile.')
       + `<div class="subtabs">${BOARDS_L.map(([id, n]) => `<button class="subtab ${sel.board === id ? 'sel' : ''}" data-k="board" data-v="${id}">${n}</button>`).join('')}</div>`
@@ -261,24 +283,37 @@ export function initHub(ctx) {
   }
 
   // -------------------------------------------------------------------------- EVENTS + ADVENT
+  const COS_NAMES = { au_dawn: 'Dawn Light', bg_cup: 'Cup Champion', au_royal: 'Royal Glow', sk_crown: 'Champion Gold' };
+  const cosName = (id) => COS_NAMES[id] || id;
   async function pageEvents(my) {
-    const [ev, adv] = await Promise.all([api.events(), isOnline() ? api.advent() : null]);
+    const [ev, adv, tour] = await Promise.all([api.events(), isOnline() ? api.advent() : null, api.tournaments()]);
     if (!live(my)) return;
     if (!ev) { body.innerHTML = head('EVENTS', '') + needOnline('Events'); bindRetry('events'); return; }
+    if (tour && tour.rewards && tour.rewards.length) for (const r of tour.rewards) ctx.notify(`${r.name}: #${r.rank}`, `You finished #${r.rank} with ${fmt(r.score)} points.${r.coins ? ` +${fmt(r.coins)} coins.` : ''}${r.items.length ? ' Exclusive cosmetics were added to your inventory.' : ''}`);
     refreshChrome();
     const wf = ev.winterfest, ltm = ev.ltm;
     const cdTarget = wf.active ? wf.endsAt : wf.startsAt;
     const bannerWinter = `<div class="banner xmas"><div><h2>${esc(wf.name)}</h2><p>${esc(wf.blurb)}</p></div><div class="cd"><small>${wf.active ? 'ENDS IN' : 'STARTS IN'}</small><b data-cd="${cdTarget}">--</b></div></div>`;
-    const bannerLtm = `<div class="banner gold"><div><h2>${esc(ltm.name)} <span class="tag2" style="background:#e0344a;vertical-align:middle">LIMITED TIME</span></h2><p>${esc(ltm.desc)}</p></div>${ltm.active ? `<div class="cd"><small>${ltm.endsAt ? 'ROTATES IN' : ''}</small><b ${ltm.endsAt ? `data-cd="${ltm.endsAt}"` : ''}>${ltm.endsAt ? '--' : 'LIVE'}</b></div><button class="btn gold" id="playDuel">PLAY NOW</button>` : '<div class="cd"><small>NEXT WINDOW</small><b>Fri 18:00 UTC</b></div>'}</div>`;
+    const bannerLtm = `<div class="banner neon"><div><h2>${esc(ltm.name)} <span class="tag2" style="background:#e0344a;vertical-align:middle">LIMITED TIME</span></h2><p>${esc(ltm.desc)}</p></div>${ltm.active ? `<div class="cd"><small>${ltm.endsAt ? 'ROTATES IN' : ''}</small><b ${ltm.endsAt ? `data-cd="${ltm.endsAt}"` : ''}>${ltm.endsAt ? '--' : 'LIVE'}</b></div><button class="btn neon" id="playNeon">PLAY NOW</button>` : '<div class="cd"><small>NEXT WINDOW</small><b>Fri 18:00 UTC</b></div>'}</div>`;
     let doors = '';
     if (adv && adv.active) {
       doors = `<div class="hp-head" style="margin-top:6px"><h1 style="font-size:34px">Advent calendar</h1><p>One door per day, opening at 00:00 UTC for everyone at once. Missed doors stay open until the event ends.</p><span class="sp"></span>${adv.nextDoorAt ? `<div class="pill"><span>Next door in <b data-cd="${adv.nextDoorAt}">--</b></span></div>` : ''}</div><div class="doors">${adv.doors.map((d) => `<div class="door ${d.state} ${d.day >= 24 ? 'big' : ''}" data-day="${d.day}" title="${esc(d.reward.label)}"><div><b>${d.day}</b><small>${d.state === 'locked' ? 'Opens Dec ' + d.day : esc(d.reward.label)}</small></div></div>`).join('')}</div>`;
     } else if (adv && !adv.active) doors = `<div class="empty">The advent calendar opens on <b>${new Date(adv.opensAt).toUTCString().slice(5, 16)}</b> at 00:00 UTC.</div>`;
     else doors = '<div class="empty">Sign in to the server to open advent doors.</div>';
-    body.innerHTML = head('EVENTS', 'Limited-time content, same clock for every player.') + bannerWinter + bannerLtm + doors;
+    const prize = (r) => `${r.cos.length ? r.cos.map((c) => `<b>${esc(cosName(c))}</b>`).join(', ') : ''}${r.cos.length && r.coins ? ' + ' : ''}${r.coins ? `${fmt(r.coins)} coins` : ''}`;
+    const tcards = (tour ? tour.tournaments.filter((t) => t.state !== 'ended').map((t) => {
+      const top = t.rewards[0];
+      return `<div class="banner tourn ${t.kind}"><div><h2>${esc(t.name)} <span class="tag2" style="background:${t.state === 'live' ? '#1fa85a' : '#555'};vertical-align:middle">${t.state === 'live' ? 'LIVE' : 'UPCOMING'}</span></h2><p>${esc(t.blurb)}</p><p class="small">Winner: ${prize(top)}</p>${t.mine ? `<p class="small">Your best: <b>${fmt(t.mine.score)}</b> (rank #${t.mine.rank})</p>` : ''}</div><div class="cd"><small>${t.state === 'live' ? 'ENDS IN' : 'STARTS IN'}</small><b data-cd="${t.state === 'live' ? t.end : t.start}">--</b>${t.state === 'live' ? `<button class="btn sm" data-tb="${esc(t.id)}">RANKING</button>` : ''}</div></div>`;
+    }).join('') : '');
+    body.innerHTML = head('EVENTS', 'Limited-time content, same clock for every player.') + tcards + bannerWinter + bannerLtm + doors;
+    for (const b of body.querySelectorAll('[data-tb]')) b.onclick = async () => {
+      click(); const d = await api.tournament(b.dataset.tb);
+      if (!d) { toastBar('Could not load the ranking'); return; }
+      ctx.notify(`${d.name} - ${d.entrants} runner${d.entrants === 1 ? '' : 's'}`, d.rows.length ? d.rows.slice(0, 12).map((r) => `#${r.rank} ${r.name} - ${fmt(r.score)}${r.me ? '  (you)' : ''}`).join('\n') : 'No scores yet: play a Classic run to enter.');
+    };
     const tick = () => { for (const el of body.querySelectorAll('[data-cd]')) el.textContent = dur(Number(el.dataset.cd) - serverNow()); };
     tick(); timers.push(setInterval(tick, 1000));
-    const pd = $('playDuel'); if (pd) pd.onclick = () => { click(); ctx.startDuel(); };
+    const pd = $('playNeon'); if (pd) pd.onclick = () => { click(); ctx.startNeon(); };
     for (const d of body.querySelectorAll('.door.open')) d.onclick = async () => {
       const r = await api.claimAdvent(Number(d.dataset.day));
       if (r && r.json && r.json.ok) { audio.sfx.mission(); ctx.syncEconomy(); ctx.refresh(); toastBar(`Door ${d.dataset.day}: ${r.json.reward.label}`); if (r.json.achievements.length) toastBar(`Achievement: ${r.json.achievements[0].name}`); open('events'); }

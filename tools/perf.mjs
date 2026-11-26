@@ -1,5 +1,5 @@
 // Unit tests for the performance manager (GPU tiers, adaptive resolution, frame stats). No browser needed.
-import { detectTier, AdaptiveRes, FrameStats, PRESETS, presetOf } from '../src/perf.js';
+import { detectTier, AdaptiveRes, FrameStats, PRESETS, presetOf, benchmarkTier } from '../src/perf.js';
 let pass = 0, fail = 0;
 const ok = (c, name, extra = '') => { if (c) { pass++; console.log('PASS ', name, extra); } else { fail++; console.log('FAIL ', name, extra); } };
 
@@ -11,14 +11,23 @@ ok(tier('Apple M2') === 'high', 'Apple silicon is high');
 ok(tier('ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11)') === 'medium', 'Intel UHD is medium');
 ok(tier('ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11)') === 'medium', 'Intel Iris Xe is medium');
 ok(tier('ANGLE (Intel, Intel(R) HD Graphics 4000 Direct3D11)') === 'low', 'old Intel HD is low');
-ok(tier('Google SwiftShader') === 'low', 'SwiftShader (software) is low');
-ok(tier('llvmpipe (LLVM 15.0.7, 256 bits)') === 'low', 'llvmpipe is low');
+ok(tier('Google SwiftShader') === 'potato', 'SwiftShader (software) gets the Potato preset');
+ok(tier('llvmpipe (LLVM 15.0.7, 256 bits)') === 'potato', 'llvmpipe gets the Potato preset');
 ok(tier('Mali-G78', { mobile: true }) === 'medium', 'modern phone is medium');
 ok(tier('Mali-G52', { mobile: true, cores: 4, memory: 3 }) === 'low', 'low-end phone is low');
 ok(tier('NVIDIA GeForce RTX 4070', { cores: 2, memory: 8 }) === 'medium', 'strong GPU on a 2-core CPU is held at medium');
 ok(tier('') === 'high', 'unknown GPU string does not penalise the player');
 ok(Object.keys(PRESETS).every((k) => PRESETS[k].shadowRes > 0 && PRESETS[k].prCap > 0), 'every preset is complete');
 ok(presetOf('nope') === PRESETS.high && PRESETS.low.shadows === false && PRESETS.low.post === false, 'unknown preset falls back to high; Performance has no shadows or post');
+ok(PRESETS.potato && !PRESETS.potato.post && !PRESETS.potato.shadows && PRESETS.potato.prCap < 1 && PRESETS.potato.weather === 0, 'Potato is the cheapest preset');
+
+// ---- startup benchmark: frame time -> preset, never above the GPU tier
+ok(benchmarkTier(50, 'high', 'high') === 'low', '20 fps on High drops two steps');
+ok(benchmarkTier(35, 'high', 'high') === 'medium', '28 fps on High drops one step');
+ok(benchmarkTier(16, 'high', 'high') === 'high', '60 fps keeps High');
+ok(benchmarkTier(10, 'medium', 'high') === 'high', 'a fast machine can move up');
+ok(benchmarkTier(10, 'low', 'medium') === 'medium', 'never above the detected GPU tier');
+ok(benchmarkTier(80, 'potato', 'high') === 'potato', 'never below Potato');
 
 // ---- adaptive resolution: feed frames of a fixed duration, one second at a time
 const run = (a, ms, seconds, budget = 16.7) => { let last = null; const frames = Math.round((seconds * 1000) / ms); for (let i = 0; i < frames; i++) { const r = a.push(ms, budget); if (r !== null) last = r; } return last; };

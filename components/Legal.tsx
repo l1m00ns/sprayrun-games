@@ -1,7 +1,7 @@
 // Shared frame for the legal pages (/terms, /privacy). The game itself locks scrolling, so these pages scroll inside a fixed container.
 import type { ReactNode } from 'react';
 
-export const LEGAL_VERSION = '2026-11-25';
+export const LEGAL_VERSION = '2026-11-26';
 
 export default function Legal({ title, children }: { title: string; children: ReactNode }) {
   return (

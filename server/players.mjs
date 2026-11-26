@@ -7,15 +7,22 @@ export const tierOf = (r) => TIERS.find(([min]) => r >= min)[1];
 
 export const careerOf = (p) => { try { return { ...newCareer(), ...JSON.parse(p.career || '{}') }; } catch { return newCareer(); } };
 
+// Short public id, shown after the name (#A1B2). It comes from the player id, so it never changes and two players
+// with the same display name stay tellable apart in a race, a friend list or a leaderboard.
+export const tagOf = (id) => String(id || '').replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase();
+
+let ladderHook = () => null;
+export const setLadderHook = (fn) => { ladderHook = fn; };
 export function profile(p, withRank = true) {
   const lv = levelOf(p.xp || 0);
   return {
-    id: p.id, name: p.name, username: p.username || null, hasAccount: !!p.username,
+    id: p.id, name: p.name, tag: tagOf(p.id), guest: !p.username, username: p.username || null, hasAccount: !!p.username,
     rating: Math.round(p.rating), tier: tierOf(p.rating), games: p.games, wins: p.wins,
     level: lv.level, xp: lv.xp, xpInto: lv.into, xpNeed: lv.need, title: titleOf(lv.level),
     ranked: { minSeconds: rankedMinSeconds(), played: Math.floor(careerOf(p).time), unlocked: careerOf(p).time >= rankedMinSeconds() },
     badges: (careerOf(p).badges || []).map((id) => ({ id, ...(BADGES[id] || { name: id }) })),
     banned: !!p.banned, kickedUntil: p.kicked_until > nowMs() ? p.kicked_until : 0, banReason: p.banned ? p.ban_reason || 'Violation of the fair-play policy' : null,
+    ladders: ladderHook(p.id), // Solo / Duos / Trios ratings (filled in by mmr.mjs)
     rank: withRank && p.games > 0 && !p.banned ? q.ratingRank.get(p.rating).n + 1 : null,
   };
 }

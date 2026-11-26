@@ -25,19 +25,32 @@ const text = (p, sel) => p.evaluate((s) => (document.querySelector(s) || {}).tex
 const visible = (p, sel) => p.evaluate((s) => { const e = document.querySelector(s); return !!e && !e.classList.contains('hidden'); }, sel);
 
 const A = await open(logsA, 'Ana'), B = await open(logsB, 'Ben');
+const pickMode = async (p, id) => {
+  await click(p, '#modeCard'); await sleep(220);
+  const cat = id.startsWith('normal') ? 'normal' : id.startsWith('ranked') ? 'ranked' : 'other';
+  await p.evaluate((c) => { const b = document.querySelector(`.mp-cat[data-cat="${c}"]`); if (b) b.click(); }, cat);
+  await sleep(120);
+  await p.evaluate((i) => document.querySelector(`.mp-card[data-id="${i}"]`).click(), id);
+  await sleep(250);
+};
 // ---- mode card + picker
 ok(/Classic Run/.test(await text(A, '#modeCard')), 'the mode card above PLAY shows the default mode', (await text(A, '#modeCard')).replace(/\s+/g, ' ').slice(0, 60));
 await click(A, '#modeCard'); await sleep(400);
-const cards = await A.evaluate(() => [...document.querySelectorAll('.mp-card')].map((c) => c.dataset.id));
-ok(['ranked-1', 'ranked-2', 'ranked-3', 'normal-1', 'normal-2', 'normal-3', 'goldrush', 'solo-classic', 'solo-nocoin', 'daily', 'room'].every((id) => cards.includes(id)), 'picker lists LTM, Ranked, Normal (Solo/Duos/Trios) and the other modes', cards.join(','));
-const heads = await A.evaluate(() => [...document.querySelectorAll('#mpBody h4')].map((h) => h.textContent));
-ok(['Limited-time', 'Ranked', 'Normal', 'Other modes'].every((h) => heads.includes(h)), 'grouped by category', heads.join(' | '));
+const cats = await A.evaluate(() => [...document.querySelectorAll('.mp-cat')].map((b) => b.dataset.cat));
+ok(['ltm', 'ranked', 'normal', 'other'].every((c) => cats.includes(c)), 'the picker is grouped by category', cats.join(','));
+const cards = [];
+for (const c of ['ltm', 'ranked', 'normal', 'other']) {
+  await A.evaluate((cat) => document.querySelector(`.mp-cat[data-cat="${cat}"]`).click(), c);
+  await sleep(120);
+  cards.push(...await A.evaluate(() => [...document.querySelectorAll('.mp-card')].map((x) => x.dataset.id)));
+}
+ok(['ranked-1', 'ranked-2', 'ranked-3', 'normal-1', 'normal-2', 'normal-3', 'neonrush', 'solo-classic', 'solo-nocoin', 'daily', 'room'].every((id) => cards.includes(id)), 'picker lists LTM, Ranked, Normal (Solo/Duos/Trios) and the other modes', cards.join(','));
 await A.screenshot({ path: `${OUT}/picker.png` });
+await A.evaluate(() => document.querySelector('.mp-cat[data-cat="normal"]').click()); await sleep(120);
 await A.evaluate(() => document.querySelector('.mp-card[data-id="normal-2"]').click()); await sleep(300);
 ok(/Normal Duos/.test(await text(A, '#modeCard')) && !(await visible(A, '#modePick')), 'picking a mode updates the card and closes the picker');
-await A.evaluate(() => document.querySelector('.mp-card[data-id="normal-1"]') || document.querySelector('#modeCard').click());
-await click(A, '#modeCard'); await sleep(200); await A.evaluate(() => document.querySelector('.mp-card[data-id="normal-1"]').click()); await sleep(300);
-await click(B, '#modeCard'); await sleep(200); await B.evaluate(() => document.querySelector('.mp-card[data-id="normal-1"]').click()); await sleep(300);
+await pickMode(A, 'normal-1');
+await pickMode(B, 'normal-1');
 await A.screenshot({ path: `${OUT}/menu-modes.png` });
 
 // ---- friends: B adds A by friend code (no Online button anywhere)

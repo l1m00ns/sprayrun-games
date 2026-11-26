@@ -82,12 +82,12 @@ const entry = fs.readFileSync(path.join(root, 'server', 'standalone.mjs'), 'utf8
 if (!entry.includes("from './core.mjs'")) throw new Error("server/standalone.mjs no longer imports './core.mjs': update scripts/publish.mjs");
 fs.writeFileSync(path.join(stage, 'server.mjs'), entry.replace(/from '\.\/([a-z]+\.mjs)'/g, "from './server/$1'")); // every sibling import now points into ./server/
 copy('src/consts.js'); copy('src/arena.js'); // movement / speed rules shared with the client (the server validates with them)
-for (const t of ['backend.mjs', 'duel-net.mjs', 'ai-probe.mjs', 'ai-panel.mjs', 'ai-tune.mjs']) if (fs.existsSync(path.join(root, 'tools', t))) copy(`tools/${t}`);
+for (const t of ['backend.mjs', 'duel-net.mjs', 'social.mjs', 'analytics.mjs', 'tournaments.mjs', 'ai-probe.mjs', 'ai-panel.mjs', 'ai-tune.mjs']) if (fs.existsSync(path.join(root, 'tools', t))) copy(`tools/${t}`);
 copy('.env.example');
 fs.writeFileSync(path.join(stage, '.gitignore'), 'node_modules\ndata\n.env\n*.log\n');
 fs.writeFileSync(path.join(stage, 'package.json'), JSON.stringify({
   name: 'sprayrun-backends', version: BACKEND_VERSION, private: true, type: 'module', description: 'Reverse Surfers backend: accounts, economy, ranked, duels, anti-cheat, AI review',
-  engines: { node: '>=22.13' }, scripts: { start: 'node server.mjs', test: 'node tools/backend.mjs && node tools/duel-net.mjs' }, dependencies: { ws: '^8.23.0' },
+  engines: { node: '>=22.13' }, scripts: { start: 'node server.mjs', test: 'node tools/backend.mjs && node tools/duel-net.mjs && node tools/social.mjs && node tools/analytics.mjs && node tools/tournaments.mjs' }, dependencies: { ws: '^8.23.0' },
 }, null, 2) + '\n');
 fs.writeFileSync(path.join(stage, 'README.md'), fs.readFileSync(path.join(root, 'server', 'README.md'), 'utf8'));
 // Render / Railway / Fly: one-click settings. Node 24 so that node:sqlite works without flags; TRUST_PROXY because the platform

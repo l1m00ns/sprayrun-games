@@ -6,6 +6,7 @@ const mat = (col, o = {}) => (GHOST ? ghostMat(col, 0.5) : baseMat(col, { ...o, 
 import { damp, clamp } from './util.js';
 import { makeGlowTexture } from './textures.js';
 import { getModel } from './models.js';
+import { STYLES, AURAS } from './cosmetics.js';
 
 export const CHARACTERS = [
   { id: 'rio', name: 'Rio', cost: 0, tag: 'Cap on, hood down, no brakes', skin: '#d9a07a', top: '#ff7a1a', accent: '#fff4e0', pants: '#1f2a44', shoes: '#f4f4f4', sole: '#ff7a1a', hat: 'cap', hatColor: '#10192e', hair: '#2b1b12', bag: '#29d6ff', jacket: 'puffer' },
@@ -266,6 +267,87 @@ function buildHat(head, def) {
   }
 }
 
+// ---------------------------------------------------------------- backpacks, auras (cosmetics)
+function buildBagVariant(id, torsoP, def) {
+  const g = new THREE.Group();
+  const accent = def.accent || '#ffffff';
+  if (id === 'bg_cat') {
+    const body = sph(0.2, mat('#f5efe6', { rough: 0.8 })); body.scale.set(1, 1.05, 0.9); g.add(body);
+    const head = sph(0.15, mat('#f5efe6', { rough: 0.8 })); head.position.set(0, 0.26, -0.02); g.add(head);
+    for (const sx of [-1, 1]) { const ear = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 4), mat('#f5efe6')); ear.position.set(sx * 0.09, 0.4, -0.02); g.add(ear); const eye = sph(0.02, mat('#222')); eye.position.set(sx * 0.055, 0.28, -0.16); g.add(eye); }
+    const tail = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 12, Math.PI * 1.3), mat('#f5efe6')); tail.position.set(0.18, -0.1, 0.05); tail.rotation.y = 1.2; g.add(tail);
+    g.position.set(0, 0.34, 0.34);
+  } else if (id === 'bg_rocket') {
+    for (const sx of [-1, 1]) {
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.1, 0.5, 12), mat('#e8e8ee', { metal: 0.4, rough: 0.35 })); body.position.set(sx * 0.14, 0.04, 0); g.add(body);
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.16, 12), mat('#e8453c')); nose.position.set(sx * 0.14, 0.37, 0); g.add(nose);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.102, 0.102, 0.05, 12), mat('#e8453c')); band.position.set(sx * 0.14, -0.08, 0); g.add(band);
+      const fl = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.3, 8), basicMat('#ffb347', { transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending })); fl.rotation.x = Math.PI; fl.position.set(sx * 0.14, -0.4, 0); fl.name = 'bagflame'; fxLayer(fl); g.add(fl);
+    }
+    g.position.set(0, 0.36, 0.34);
+  } else if (id === 'bg_guitar') {
+    const body = rbox(0.34, 0.62, 0.16, 0.06, mat('#7a4a2a', { rough: 0.6 })); g.add(body);
+    const neck = rbox(0.09, 0.4, 0.07, 0.02, mat('#5a3a22')); neck.position.set(0, 0.5, 0); g.add(neck);
+    const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.02, 14), mat('#1a0f08')); hole.rotation.x = Math.PI / 2; hole.position.set(0, 0.02, -0.085); g.add(hole);
+    const clasp = rbox(0.1, 0.05, 0.02, 0.01, mat('#ffd23f', { metal: 0.7 })); clasp.position.set(0, -0.16, -0.09); g.add(clasp);
+    g.position.set(0, 0.34, 0.3); g.rotation.z = 0.35;
+  } else if (id === 'bg_wings') {
+    g.userData.wings = [];
+    for (const sx of [-1, 1]) {
+      const w = new THREE.Group();
+      for (let i = 0; i < 5; i++) {
+        const f = rbox(0.1, 0.55 - i * 0.07, 0.025, 0.012, mat(i % 2 ? '#ffffff' : '#e8f1ff', { rough: 0.6 }));
+        f.position.set(sx * (0.12 + i * 0.1), 0.16 - i * 0.06, 0); f.rotation.z = -sx * (0.35 + i * 0.12); w.add(f);
+      }
+      w.position.set(sx * 0.05, 0.32, 0); g.add(w); g.userData.wings.push([w, sx]);
+    }
+    g.position.set(0, 0.28, 0.3);
+  } else if (id === 'bg_cube') {
+    const c = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), mat('#102030', { emissive: new THREE.Color('#29f0ff'), ei: 0.35 })); g.add(c);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(c.geometry), new THREE.LineBasicMaterial({ color: 0x29f0ff })); fxLayer(e); g.add(e);
+    const sm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), mat('#ff3dd0', { emissive: new THREE.Color('#ff3dd0'), ei: 0.9 })); sm.name = 'cubeorbit'; g.add(sm);
+    g.userData.spin = c; g.position.set(0, 0.42, 0.4);
+  } else if (id === 'bg_cup') {
+    const gold = mat('#ffd23f', { metal: 0.8, rough: 0.25 });
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.09, 0.26, 16), gold); cup.position.y = 0.12; g.add(cup);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.12, 8), gold); stem.position.y = -0.07; g.add(stem);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.05, 14), gold); base.position.y = -0.15; g.add(base);
+    for (const sx of [-1, 1]) { const h = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.018, 6, 12, Math.PI), gold); h.position.set(sx * 0.18, 0.14, 0); h.rotation.z = sx > 0 ? -Math.PI / 2 : Math.PI / 2; g.add(h); }
+    const gem = sph(0.04, mat('#ff3d7f', { emissive: new THREE.Color('#ff3d7f'), ei: 0.7 })); gem.position.set(0, 0.14, -0.17); g.add(gem);
+    g.position.set(0, 0.34, 0.36);
+  }
+  for (const sx of [-1, 1]) { const strap = box(0.06, 0.5, 0.05, mat('#1b1f2b')); strap.position.set(sx * 0.16, 0.38, -0.19); torsoP.add(strap); }
+  torsoP.add(g);
+  shadowify(g, true, false);
+  return g;
+}
+
+function buildAura(a) {
+  const g = new THREE.Group();
+  const add = (col, op) => basicMat(col, { transparent: true, opacity: op, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const r1 = new THREE.Mesh(new THREE.RingGeometry(0.52, 0.68, 40), add(a.color, 0.55)); r1.rotation.x = -Math.PI / 2; r1.position.y = 0.05; g.add(r1);
+  const r2 = new THREE.Mesh(new THREE.RingGeometry(0.86, 0.94, 40), add(a.color2, 0.35)); r2.rotation.x = -Math.PI / 2; r2.position.y = 0.06; g.add(r2);
+  const N = 18, pos = new Float32Array(N * 3), ph = new Float32Array(N);
+  for (let i = 0; i < N; i++) ph[i] = Math.random() * 6.28;
+  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(pg, new THREE.PointsMaterial({ color: a.color2, size: 0.1, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
+  pts.frustumCulled = false; g.add(pts);
+  fxLayer(g);
+  return { group: g, r1, r2, pts, pos, ph, N, kind: a.kind, t: 0 };
+}
+function updateAura(au, dt, speed) {
+  au.t += dt;
+  const k = 1 + Math.sin(au.t * 3) * 0.06;
+  au.r1.scale.setScalar(k); au.r2.scale.setScalar(2 - k); au.r1.rotation.z += dt * 1.2; au.r2.rotation.z -= dt * 0.7;
+  const fast = au.kind === 'volt' ? 3 : au.kind === 'ember' ? 0.6 : 1.2;
+  for (let i = 0; i < au.N; i++) {
+    const t = (au.t * 0.45 * fast + au.ph[i]) % 1, ang = au.ph[i] * 7 + au.t * (au.kind === 'volt' ? 4 : 1.4), r = 0.45 + 0.35 * Math.sin(au.ph[i] * 3 + au.t);
+    au.pos[i * 3] = Math.cos(ang) * r; au.pos[i * 3 + 1] = 0.05 + t * 1.5; au.pos[i * 3 + 2] = Math.sin(ang) * r;
+  }
+  au.pts.geometry.attributes.position.needsUpdate = true;
+  void speed;
+}
+
 // Visual scale: collider height C.PLAYER_H (1.45) over the ~2.36 tall unscaled model.
 export const CHAR_SCALE = 0.614;
 
@@ -353,8 +435,10 @@ function buildCharacterInner(def, scale) {
     hood.position.set(0, 0.64, 0.14);
     torsoP.add(hood);
   }
-  // backpack
-  if (def.bag) {
+  // backpack (a cosmetic one replaces the plain pack)
+  let bagGroup = null;
+  if (def.bagId) bagGroup = buildBagVariant(def.bagId, torsoP, def);
+  if (def.bag && !def.bagId) {
     const bag = rbox(0.44, 0.52, 0.22, 0.08, mat(def.bag, { rough: 0.6 }));
     bag.position.set(0, 0.33, 0.3);
     torsoP.add(bag);
@@ -566,7 +650,9 @@ function buildCharacterInner(def, scale) {
     armL: arms.L.sh, foreL: arms.L.elbow, armR: arms.R.sh, foreR: arms.R.elbow,
     legL: legs.L.th, shinL: legs.L.knee, legR: legs.R.th, shinR: legs.R.knee,
   };
-  return { root, rig, jet, board, can, stars, scale, phase: 0, t: 0, state: 'run', roll: 0, def, sneakGlow, flameMats: jet.children.filter((c) => c.name === 'flame') };
+  const aura = !GHOST && def.auraId && AURAS[def.auraId] ? buildAura(AURAS[def.auraId]) : null;
+  if (aura) root.add(aura.group);
+  return { root, rig, jet, board, can, stars, aura, bagGroup, style: def.styleId ? STYLES[def.styleId] : null, scale, phase: 0, t: 0, state: 'run', roll: 0, def, sneakGlow, flameMats: jet.children.filter((c) => c.name === 'flame') };
 }
 
 // ---------------------------------------------------------------- animation
@@ -589,10 +675,10 @@ export function poseCharacter(ch, st, dt) {
 
   const stateName = st.state;
   if (stateName === 'run' || stateName === 'sprint') {
-    const rate = stateName === 'sprint' ? 15 : 8.5 + st.speed * 0.17;
+    const rate = (stateName === 'sprint' ? 15 : 8.5 + st.speed * 0.17) * (ch.style ? ch.style.rate : 1);
     ch.phase += dt * rate;
     const s = Math.sin(ch.phase), c = Math.cos(ch.phase);
-    const amp = stateName === 'sprint' ? 1.15 : 1.0;
+    const amp = (stateName === 'sprint' ? 1.15 : 1.0) * (ch.style ? ch.style.amp : 1);
     lx = s * amp; rlx = -s * amp;
     lk = -(0.25 + 1.2 * Math.max(0, c)); rk = -(0.25 + 1.2 * Math.max(0, -c));
     la = -s * 1.0; ra = s * 1.0;
@@ -601,6 +687,7 @@ export function poseCharacter(ch, st, dt) {
     hipsY = 0.92 + 0.07 * (1 - Math.abs(s)) - 0.04;
     torsoX = -0.2; torsoY = s * 0.14; headX = 0.12; headY = -s * 0.1;
     leanZ = -(st.vx || 0) * 0.018;
+    if (ch.style) { const y = ch.style; la -= y.armsBack; ra -= y.armsBack; torsoX -= y.lean; headX -= y.lean * 0.4; hipsY += y.bounce * 0.045 * Math.abs(s); if (y.pump) { la += s * 0.5; ra -= s * 0.5; lf += 0.35; rf += 0.35; } if (y.armsBack) { laz = -0.25; raz = 0.25; lf = 0.3; rf = 0.3; } }
   } else if (stateName === 'jump') {
     k = 14;
     const rising = st.vy > 0;
@@ -667,12 +754,15 @@ export function poseCharacter(ch, st, dt) {
       pivY = 0.8 - 0.5 * p;
     }
   } else if (stateName === 'board') {
-    k = 14;
-    lx = 0.35; rlx = -0.12; lk = -0.55; rk = -0.5;
-    la = 0.3; ra = 0.3; laz = -0.95; raz = 0.95; lf = 0.4; rf = 0.4;
-    torsoX = -0.12; torsoY = -0.5; headX = 0.1; headY = 0.5;
-    hipsY = 0.8;
-    leanZ = -(st.vx || 0) * 0.03;
+    // Riding: the feet stay planted on the deck, the body carves with the board instead of standing still.
+    k = 12;
+    ch.phase += dt * (2.2 + Math.min(st.speed || 0, 40) * 0.02);
+    const sway = Math.sin(ch.phase) * 0.09, pump = Math.sin(ch.phase * 2 + 0.7);
+    lx = 0.42 + sway; rlx = -0.18 - sway; lk = -0.62 + sway * 0.6; rk = -0.52 - sway * 0.6;
+    la = 0.26 + pump * 0.12; ra = 0.34 - pump * 0.12; laz = -1.02 + sway * 0.5; raz = 1.02 - sway * 0.5; lf = 0.38; rf = 0.42;
+    torsoX = -0.2 - 0.05 * pump; torsoY = -0.5 + sway * 0.7; headX = 0.16; headY = 0.5 - sway * 0.4;
+    hipsY = 0.79 + 0.02 * pump;
+    leanZ = -(st.vx || 0) * 0.035 + sway * 0.32;
   } else if (stateName === 'jet') {
     k = 10;
     lx = 0.15 + Math.sin(t * 8) * 0.1; rlx = -0.3 + Math.sin(t * 8 + 1) * 0.1; lk = -0.3; rk = -0.4;
@@ -691,6 +781,11 @@ export function poseCharacter(ch, st, dt) {
     torsoY = Math.sin(t * 0.7) * 0.15;
   }
 
+  if (ch.aura) updateAura(ch.aura, dt, st.speed);
+  if (ch.bagGroup) { const bg = ch.bagGroup;
+    if (bg.userData.wings) for (const [w, sx] of bg.userData.wings) w.rotation.z = sx * (0.1 + Math.sin(t * (stateName === 'run' || stateName === 'sprint' ? 9 : 2.2)) * 0.12);
+    if (bg.userData.spin) { bg.userData.spin.rotation.y += dt * 1.4; bg.userData.spin.rotation.x += dt * 0.6; const o = bg.getObjectByName('cubeorbit'); if (o) o.position.set(Math.cos(t * 3) * 0.28, Math.sin(t * 2) * 0.12, Math.sin(t * 3) * 0.28); }
+    for (const c of bg.children) if (c.name === 'bagflame') c.scale.set(1, 0.7 + Math.random() * 0.6, 1); }
   if (ch.stars) { ch.stars.visible = stateName === 'crash' && st.crashT > 0.3; ch.stars.rotation.y = t * 5; }
   setRot(r.legL, lx, 0, 0, dt, k);
   setRot(r.legR, rlx, 0, 0, dt, k);

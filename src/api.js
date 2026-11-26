@@ -78,6 +78,8 @@ export const profileByName = async (name) => { const r = await call('GET', '/api
 export const events = async () => { const r = await call('GET', '/api/events', null, false); if (r && r.status === 200) { online.events = r.json; online.serverOffset = r.json.serverTime - Date.now(); return r.json; } return null; };
 export const advent = async () => { const r = await call('GET', '/api/advent'); if (r && r.status === 200) { online.serverOffset = r.json.serverTime - Date.now(); return r.json; } return null; };
 export async function claimAdvent(day) { const r = await call('POST', '/api/advent/claim', { day }); if (r && r.json && r.json.ok) adopt(r.json); return r; }
+export const tournaments = async () => { const r = await call('GET', '/api/tournaments'); return r && r.status === 200 ? r.json : null; };
+export const tournament = async (id) => { const r = await call('GET', '/api/tournaments/' + encodeURIComponent(id)); return r && r.status === 200 ? r.json : null; };
 export const updates = async () => { const r = await call('GET', '/api/updates', null, false); return r && r.status === 200 ? r.json.updates : null; };
 
 // ---- support

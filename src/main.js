@@ -15,7 +15,7 @@ import { initSocial } from './social.js';
 import { GAME_FULL_VERSION } from './version.js';
 import { fillIcons } from './iconsax.js';
 import { createDuel } from './duel.js';
-import { setLang, getLang, detectLang, flagUrl } from './i18n.js';
+import { setLang, getLang, detectLang, flagUrl, t } from './i18n.js';
 import { createOnboarding, openLanguagePicker } from './onboarding.js';
 import { cheats, GROUPS as CHEAT_GROUPS, tainted, activeCount, groupActive, konamiListener, renderGroup as renderCheatGroup, unlocked as secretUnlocked, setUnlocked as setSecretUnlocked, resetAll as resetCheats } from './secret.js';
 import { SCHEMA as SETTINGS, defaults as settingDefaults, renderTab as renderSettingsTab } from './settings.js';
@@ -24,10 +24,13 @@ import { World, initWorldAssets, setNight, tickWorldAssets } from './world.js';
 import { OutlinePass } from './outline.js';
 import { Weather } from './weather.js';
 import { Birds } from './critters.js';
-import { presetOf, gpuName, detectTier, AdaptiveRes, FrameStats } from './perf.js';
+import { presetOf, gpuName, detectTier, benchmarkTier, AdaptiveRes, FrameStats } from './perf.js';
 import { BIOMES, BIOME_ORDER } from './biomes.js';
 import { bend, applyBend } from './bend.js';
 import { Net } from './net.js';
+import { Rival } from './rival.js';
+import { captchaGate } from './captcha.js';
+import { initAnalytics, trackEvent, trackPerf } from './analytics.js';
 import * as api from './api.js';
 import { loadModels } from './models.js';
 import { makeIconTexture } from './textures.js';
@@ -42,8 +45,8 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('c');
 
 // ------------------------------------------------------------------ renderer
-// Anti-aliasing (MSAA) is fixed when the context is created: the Performance preset starts without it.
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: (save.settings && save.settings.quality) !== 'low', powerPreference: 'high-performance' });
+// Anti-aliasing (MSAA) is fixed when the context is created: the Performance and Potato presets start without it.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !['low', 'potato'].includes(save.settings && save.settings.quality), powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 const gpuTier = detectTier(gpuName(renderer.getContext()), { mobile: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), cores: navigator.hardwareConcurrency || 8, memory: navigator.deviceMemory || 8 });
 const adapt = new AdaptiveRes({ min: 0.55 });
@@ -119,7 +122,7 @@ function applySettings(key) {
   if (all || key === 'renderScale') applyPixelRatio();
   if (key === 'autoRes' || (all && s.autoRes === false)) { autoK = 1; adapt.reset(); applyPixelRatio(); }
   if (all || key === 'music' || key === 'sfx') audio.setVolumes(s.music, s.sfx);
-  if (all || key === 'quality') applyQuality();
+  if (all || key === 'quality' || key === 'shadowQuality' || key === 'particles') applyQuality();
   if (all || key === 'outline') applyOutline();
   if (all || key === 'bloom' || key === 'reduceMotion') { if (bloom) bloom.enabled = s.bloom !== false && !s.reduceMotion; }
   if (all || key === 'shadows') { const on = presetOf(s.quality).shadows && s.shadows !== false; renderer.shadowMap.enabled = on; sun.castShadow = on; }
@@ -127,19 +130,20 @@ function applySettings(key) {
 }
 function applyOutline() { if (outline) outline.enabled = save.settings.outline !== false; }
 function applyQuality() {
-  const q = presetOf(save.settings.quality);
-  const shadowsOn = q.shadows && save.settings.shadows !== false;
+  const s = save.settings, q = presetOf(s.quality);
+  const shadowsOn = q.shadows && s.shadows !== false;
   renderer.shadowMap.enabled = shadowsOn;
   sun.castShadow = shadowsOn;
-  if (sun.shadow.mapSize.x !== q.shadowRes) { // a new shadow-map size only takes effect once the old target is released
-    sun.shadow.mapSize.set(q.shadowRes, q.shadowRes);
+  const shadowRes = Math.max(256, Math.min(4096, Math.round(q.shadowRes * (s.shadowQuality === 'low' ? 0.5 : s.shadowQuality === 'high' ? 2 : 1))));
+  if (sun.shadow.mapSize.x !== shadowRes) { // a new shadow-map size only takes effect once the old target is released
+    sun.shadow.mapSize.set(shadowRes, shadowRes);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
   }
   if (q.post && !composer) setupComposer();
   runnerLight.visible = trainLight.visible = !!q.post; // lights change the shader: only on High
-  if (fx) fx.setBudget(q.particles);
+  if (fx) fx.setBudget(q.particles * (s.particles ?? 1));
   if (weather) weather.budget = q.weather;
-  if (birds) birds.mesh.visible = q.birds;
+  if (birds && birds.mesh) birds.mesh.visible = q.birds;
   applyOutline();
   autoK = 1; adapt.reset(); applyPixelRatio(); // the preset changes the pixel-ratio cap: start from the full resolution again
   scene.traverse((o) => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach((m) => { m.needsUpdate = true; }); } });
@@ -159,6 +163,7 @@ let state = 'loading'; // loading | menu | playing | paused | dying | over
 let menuBlend = 1; // 1 = menu camera, 0 = run camera
 let time = 0;
 let charIndex = Math.max(0, CHARACTERS.findIndex((c) => c.id === save.character));
+let rival = null; // optional practice ghost (Settings > Practice ghost), never a real player
 
 const P = {
   lane: 1, target: 1, prev: 1, x: 0, y: 0, vy: 0, grounded: true, coyote: 0, vx: 0,
@@ -187,7 +192,8 @@ const curMap = () => cheats.forceMap || mapOverride || save.settings.map || 'cit
 const menuBiome = () => { const m = curMap(); return m === 'tour' ? 'city' : m; };
 const worldMode = () => { const m = curMap(); return m === 'tour' ? ['tour', 'city'] : ['fixed', m]; };
 const net = new Net();
-const mp = { active: false, running: false, counting: false, players: new Map(), ghosts: new Map(), room: null, seed: 0, sendT: 0, hudT: 0, results: null };
+const mp = { active: false, running: false, counting: false, players: new Map(), ghosts: new Map(), room: null, seed: 0, sendT: 0, hudT: 0, results: null, spectate: false, camId: null };
+let funA = 0, funSlope = 0; // Zigzag Rails: current sway amplitude and the path slope under the runner
 let duelCtl = null, queueDuelRef = null, onboarding = null, social = null, ensureOnlineRef = null;
 let botOn = /[?&]bot/.test(location.search);
 const botActive = () => botOn || cheats.bot;
@@ -202,23 +208,51 @@ function loadFonts() {
 }
 
 function setLoad(p, txt) {
+  const box = $('loading');
   $('loadBar').style.clipPath = `inset(0 ${(1 - p) * 100}% 0 0)`;
+  if (box) box.style.setProperty('--p', String(Math.max(0, Math.min(1, p))));
   $('loadPct').textContent = `${Math.round(p * 100)}%`;
-  if (txt) $('loadTxt').textContent = txt;
+  if (txt) $('loadTxt').textContent = t(txt);
 }
 const tick = () => new Promise((r) => setTimeout(r, 16));
 
 function buildPlayer() {
   if (player) scene.remove(player.root);
-  player = buildCharacter(dressed(CHARACTERS[charIndex], save.equip && save.equip.outfit));
+  player = buildCharacter(dressed(CHARACTERS[charIndex], save.equip));
   scene.add(player.root);
 }
 
 const TIPS = ['Double-tap Space to launch your hoverboard.', 'Trains with a flashing triangle are coming at you - switch lanes!', 'Trains are solid walls: change lanes, or fly over them with the Jetpack.',
   'Roll under the striped bars, jump the red barriers.', 'In No Coin mode, every coin is a trap.', 'Ranked matches pair you with runners at your level.', 'Mystery chests hide coins, hoverboards and power-ups.', 'Each map has its own weather and surprises.'];
+// Automatic quality: render a few real frames behind the loading screen and keep the preset that matches the
+// machine. Unlike a GPU-name guess this also catches a slow CPU, a throttled laptop and software WebGL.
+let bootPerf = null;
+async function measureQuality() {
+  if (save.settings.autoQuality === false) return;
+  if (navigator.webdriver && !/[?&]benchmark\b/.test(location.search)) return; // automated suites choose their own preset
+  const frameOnce = () => new Promise((r) => requestAnimationFrame(() => r()));
+  try {
+    setLoad(0.97, 'Measuring your graphics…');
+    const draw = () => { if (composer && presetOf(save.settings.quality).post) composer.render(1 / 60); else renderer.render(scene, camera); };
+    for (let i = 0; i < 4; i++) { draw(); await frameOnce(); } // warm-up: shader compile is not the machine's fault
+    const n = 20, t0 = performance.now();
+    for (let i = 0; i < n; i++) { draw(); await frameOnce(); }
+    const ms = (performance.now() - t0) / n;
+    const next = benchmarkTier(ms, save.settings.quality, gpuTier.tier);
+    bootPerf = { ms: +ms.toFixed(1), from: save.settings.quality, to: next, gpu: gpuTier.name, tier: gpuTier.tier };
+    if (next !== save.settings.quality) { save.settings.quality = next; applyQuality(); persist(); }
+    const g = $('loadGpu'); if (g) g.textContent = `${save.settings.autoQuality === false ? '' : 'AUTO · '}${presetOf(save.settings.quality).label.toUpperCase()}`;
+    setLoad(0.99, 'Ready!');
+    await frameOnce();
+  } catch { /* the measurement is optional: the game runs with the current preset */ }
+}
 async function boot() {
+  setLang(save.settings.lang || detectLang());
+  const loadVer = $('loadVer'); if (loadVer) loadVer.textContent = `v${GAME_FULL_VERSION}`;
+  const loadGpu = $('loadGpu'); if (loadGpu) loadGpu.textContent = save.settings.autoQuality === false ? presetOf(save.settings.quality).label.toUpperCase() : 'AUTO';
+  await captchaGate(); // once per browser session, before the first asset is fetched
   let tipI = Math.floor(Math.random() * TIPS.length);
-  const showTip = () => { $('loadTip').textContent = TIPS[tipI++ % TIPS.length]; };
+  const showTip = () => { $('loadTip').textContent = t(TIPS[tipI++ % TIPS.length]); };
   showTip();
   const tipTimer = setInterval(showTip, 1800);
   setLoad(0.05, 'Loading fonts…');
@@ -258,8 +292,13 @@ async function boot() {
   setupUI();
   missions.ensureMissions();
   enterMenu(true);
+  await measureQuality();
+  initAnalytics();
+  if (bootPerf) trackPerf({ fps: Math.max(1, Math.round(1000 / bootPerf.ms)), ms: bootPerf.ms, low1: Math.max(1, Math.round(1000 / bootPerf.ms)) }, save.settings.quality, gpuTier.name, null, { boot: true, from: bootPerf.from, to: bootPerf.to });
   clearInterval(tipTimer);
-  $('loading').classList.add('hidden');
+  const loading = $('loading');
+  loading.classList.add('out');
+  setTimeout(() => loading.classList.add('hidden'), 380);
   if (!save.onboarded) onboarding.start();
   last = performance.now();
   requestAnimationFrame(frame);
@@ -358,7 +397,8 @@ function resetRun() {
   shownScore = 0;
   run.in = { n: 0, fast: 0, last: 0 };
   run.lbScore = 0;
-  Object.assign(run, { speed: C.SPEED_START, score: 0, coins: 0, dist: 0, jumps: 0, rolls: 0, powers: 0, lanes: 0, boards: 0, roof: 0, t: 0, dieT: 0, caughtBy: false, distAcc: 0, roofAcc: 0, reported: 0 });
+  Object.assign(run, { speed: C.SPEED_START, score: 0, coins: 0, dist: 0, jumps: 0, rolls: 0, powers: 0, lanes: 0, boards: 0, roof: 0, t: 0, dieT: 0, caughtBy: false, distAcc: 0, roofAcc: 0, reported: 0, event: null, night: false, neonMagnet: false });
+  clearTimeout(run.neonT);
   Object.assign(G, { active: false, t: 0, z: 30, x: 0, dogZ: 30, shown: true, introT: 0 });
   queue.length = 0;
   fx.clear();
@@ -374,25 +414,44 @@ function startRun(opts = {}) {
   resetRun();
   run.revives = 0; run.chestBoards = 0;
   run.boostT = 0; run.boostMul = 1; run.noCoinsT = 0; run.duelCount = 0; run.deathSaved = false; P.secondLife = false;
-  run.cheated = tainted() || !!opts.ltm;
+  run.cheated = tainted() || !!opts.ltm || !!opts.explore;
+  run.fun = opts.fun || null; run.explore = !!opts.explore; run.nudge = 0; run.nudgeT = 0;
+  run.event = opts.event || null; run.night = run.event === 'neon'; run.neonMagnet = false;
+  if (run.event === 'neon') mapOverride = 'neon'; // the event owns the map and the time of day, not the saved preference
+  world.noObstacles = run.explore;
+  tutI = save.tutStep || 0; tutT = 0; tutN = 0; tutRender();
+  if (!mp.active) clearGhosts(); // a ghost from an earlier online race must never freeze on a solo track
+  funA = 0; bend.uSway.value.set(0, 0.028, 0, 7); bend.uHill.value.set(0, 0.02, 0); funSlope = 0; // a fresh run starts with a straight track
+
   run.ltm = opts.ltm || null; run.warpAt = 20 + Math.random() * 32; run.warping = false;
   $('h-cheat').classList.toggle('hidden', !(run.cheated || (cheats.bot && cheats.botTag)));
-  $('h-cheat').textContent = opts.ltm ? 'GOLD RUSH - the track will warp into the arena...' : cheats.bot && cheats.botTag ? 'BOT DRIVING - PRACTICE' : 'PRACTICE RUN - SECRET MENU ACTIVE';
+  $('h-cheat').textContent = opts.explore ? 'EXPLORE - nothing is saved' : opts.ltm ? 'GOLD RUSH - the track will warp into the arena...' : cheats.bot && cheats.botTag ? 'BOT DRIVING - PRACTICE' : 'PRACTICE RUN - SECRET MENU ACTIVE';
   hubUI.setBarVisible(false);
   run.mode = opts.mode || save.settings.mode || 'classic';
   world.setNoCoin(run.mode === 'nocoin');
   $('hCoinPill').style.display = run.mode === 'nocoin' ? 'none' : '';
   $('hNoCoin').style.display = run.mode === 'nocoin' ? '' : 'none';
   world.setMode(...worldMode());
+  dropRival();
+  if (save.settings.rivalGhost && !mp.active && !run.explore && !opts.ltm && !run.event) { const def = CHARACTERS[(charIndex + 1) % Math.max(1, CHARACTERS.length)] || CHARACTERS[0]; rival = new Rival(scene, def); }
   run.seed = opts.seed ?? ((Math.random() * 2 ** 31) >>> 0);
+  trackEvent('run_start', { map: curMap(), mode: run.mode, quality: save.settings.quality, meta: { seed: run.seed, fun: run.fun || null, explore: !!run.explore, ltm: run.ltm || null, event: run.event, mp: !!mp.active } });
+  world.coins.gem.material.emissive.set(run.event === 'neon' ? 0xff2bd6 : 0x1a8aff); // event gems glow magenta
+  $('h-event').classList.toggle('hidden', run.event !== 'neon');
   world.setSeed(run.seed);
   world.reset({ calm: true });
   world.startRun();
   world.dist = 0;
   state = 'playing';
+  if (run.event === 'neon') { clearTimeout(run.neonT); run.neonT = setTimeout(() => { if (state === 'playing' && run.event === 'neon') activatePower('mult'); }, 2600); }
   run.intro = true;
   online.ticket = null; online.submitted = false;
-  if (online.token && !mp.active && !run.cheated) api.startTicket(run.mode, !!run.daily, curMap()).then((r) => { if (r) online.ticket = r.ticket; });
+  // Every run counts, including for a player without an account: silently get a guest identity first, then a ticket.
+  if (!mp.active && !run.cheated) {
+    const ticket = () => api.startTicket(run.mode, !!run.daily, curMap()).then((r) => { if (r) online.ticket = r.ticket; });
+    if (online.token) ticket();
+    else api.ensureAccount().then((p) => { if (p) ticket(); });
+  }
   show('menu', false);
   show('hud', true);
   $('hMul').textContent = 'x' + scoreMult();
@@ -421,6 +480,7 @@ function retarget() {
 
 function doAction(a) {
   if (state !== 'playing') return;
+  if (run.explore && (a === 'left' || a === 'right')) { run.nudge = a === 'left' ? -1 : 1; run.nudgeT = 0.35; return; } // explore: swipes steer sideways (keys steer continuously)
   if (P.jetting && a !== 'left' && a !== 'right') return;
   switch (a) {
     case 'left': case 'right': {
@@ -566,10 +626,10 @@ function breakBoard(hit) {
 let hitStop = 0; // seconds of near-freeze at the moment of impact
 function die(reason) {
   if (state !== 'playing') return;
+  if (run.explore) return; // nothing can hurt you while exploring
   run.deathKind = reason === 'crash' && P.hitKind === 'slam' ? 'slam' : 'fall';
   if (run.deathKind === 'slam') hitStop = 0.09;
   // Gold Rush: the duel happens at least once per game. A crash before the first one warps into the arena instead.
-  if (run.ltm && !run.duelCount && !run.warping && !mp.active) { run.deathSaved = true; P.inv = 6; world.clearAhead(60); toast('GOLD RUSH!'); beginWarp(false); return; }
   if (P.secondLife) { P.secondLife = false; P.inv = Math.max(P.inv, 3.2); shake = 1; flash = 1; world.clearAhead(40); audio.sfx.power(); toast('SECOND LIFE!'); return; }
   state = 'dying';
   run.dieT = 0;
@@ -612,6 +672,7 @@ function handleHit(hit) {
 
 function report(ev, n) {
   if (run.cheated) return; // practice runs never advance missions
+  tutorialEvent(ev, n || 1);
   const done = missions.report(ev, n);
   for (const m of done) {
     audio.sfx.mission();
@@ -735,7 +796,6 @@ let botCd = 0;
 function updatePlaying(dt) {
   run.t += dt;
   const introActive = !!run.introOn && run.t < INTRO_T && state === 'playing';
-  if (run.ltm && state === 'playing' && !run.warping && !introActive && run.t >= run.warpAt) beginWarp(false);
   if (state === 'playing') {
     if (introActive) {
       const k = clamp((run.t - SPRAY_T) / (INTRO_T - SPRAY_T), 0, 1);
@@ -745,6 +805,7 @@ function updatePlaying(dt) {
       let tt = run.t - (run.introOn ? INTRO_T : 0) + cheats.startPct * 1.79; // the speed curve starts when the sprint does
       if (cheats.noProgress) tt = Math.min(tt, 20 + cheats.startPct * 1.79);
       let target = cheats.lockSpeed ? cheats.lockValue : C.speedAtTime(tt) * cheats.speedMul;
+      if (run.explore) { const k = (n) => keysDown.has(n); target = k('ArrowDown') || k('s') || k('S') ? 0 : k('Shift') || k('ArrowUp') || k('w') || k('W') || k('z') || k('Z') ? 15 : 7; }
       if (run.boostT > 0) { run.boostT -= dt; target = Math.min(target * run.boostMul, C.SPEED_CAP * 1.1); } // Gold Rush winner boost (capped below the anti-cheat ceiling)
       run.speed = cheats.instantSpeed ? target : damp(run.speed, target * (P.stumbleT > 0 ? 0.8 : 1), 2.5, dt);
     }
@@ -778,7 +839,13 @@ function updatePlaying(dt) {
 
   // lane movement
   const oldX = P.x;
-  if (introActive) { /* x is driven by introStep */ } else if (P.laneT < 1) {
+  if (introActive) { /* x is driven by introStep */ } else if (run.explore) { // free movement across the width of the map
+    const k = (n) => keysDown.has(n);
+    run.nudgeT = Math.max(0, (run.nudgeT || 0) - dt);
+    const ix = ((k('ArrowRight') || k('d') || k('D')) ? 1 : 0) - ((k('ArrowLeft') || k('a') || k('A') || k('q') || k('Q')) ? 1 : 0) + (run.nudgeT > 0 ? run.nudge : 0);
+    const lim = (curMap() === 'city' || curMap() === 'neon') ? 4.2 : 16;
+    P.x = clamp(P.x + ix * 8 * dt, -lim, lim); P.laneT = 1;
+  } else if (P.laneT < 1) {
     P.laneT = Math.min(1, P.laneT + dt / P.laneDur);
     const e = snappy() ? 1 - (1 - P.laneT) ** 3 : P.laneT * P.laneT * (3 - 2 * P.laneT); // snappy: instant start, soft landing
     P.x = lerp(P.laneFrom, C.LANES[P.target], e);
@@ -812,7 +879,9 @@ function updatePlaying(dt) {
 
   // collisions & ground
   const frontDepth = speed * dt * 1.6 + 0.6;
-  const q = world.probe(P.x, P.y, P.h, frontDepth);
+  // `sweep` = how far the world moved this frame: a train that crossed the player's plane between two frames is
+  // still caught, instead of being tunnelled through at high speed.
+  const q = world.probe(P.x, P.y, P.h, frontDepth, speed * dt);
   P.ground = q.ground;
   if (!P.jetting) {
     if (P.y <= q.ground + 0.0001 && P.vy <= 0.0001) {
@@ -839,12 +908,20 @@ function updatePlaying(dt) {
   world.update(dt, speed);
   run.dist += speed * dt;
   run.distAcc += speed * dt;
+  { // fun modes: the shared vertex shader bends the whole world around the runner (kept in the game tick, not the
+    // render loop, so a headless simulation and the visible world always agree)
+    funA = damp(funA, run.fun === 'zigzag' ? 8 * clamp((run.dist - 40) / 140, 0, 1) : 0, 1.4, dt);
+    const k = 0.028, kh = 0.02, D = world.dist;
+    bend.uSway.value.set(funA, k, k * D, 7); bend.uHill.value.set(funA * 0.32, kh, kh * D);
+    funSlope = funA * k * Math.cos(k * D);
+  }
 
   // scoring
   const m = scoreMult();
   run.score += speed * dt * m * 0.9 * cheats.scoreMul;
   run.lbScore += speed * dt * (pw.mult > 0 ? 2 : 1) * 0.9;
   if (run.distAcc >= 10) { const d = Math.floor(run.distAcc / 10) * 10; run.distAcc -= d; report('dist', d); }
+  if (run.event === 'neon' && !run.neonMagnet && run.dist > 400) { run.neonMagnet = true; activatePower('magnet'); }
   if (run.roofAcc >= 10) { const d = Math.floor(run.roofAcc / 10) * 10; run.roofAcc -= d; report('roof', d); }
 
   // coins & items
@@ -871,6 +948,7 @@ function updatePlaying(dt) {
   if (pw.magnet > 0 && Math.random() < 0.5) fx.magnetPulse(P.x, P.y + 0.9, 0);
 
   // guard / dog
+  if (rival) rival.update(dt, run, world, speed, camera);
   updateGuard(dt);
   mpSend(dt);
 
@@ -986,13 +1064,13 @@ function gameOver() {
   audio.stopWind();
   audio.setMood('menu');
   const finalScore = Math.floor(run.score);
+  trackEvent('run_end', { map: curMap(), mode: run.mode, meta: { score: finalScore, dist: Math.floor(run.dist), coins: run.coins, time: +run.t.toFixed(1), cheated: !!run.cheated, reason: run.deathReason || null } });
   const bank = !run.cheated;
   const newBest = bank && finalScore > save.best;
   if (newBest) save.best = finalScore;
   if (bank) { save.bestDist = Math.max(save.bestDist, Math.floor(run.dist)); save.bestCoins = Math.max(save.bestCoins, run.coins); }
   if (bank) save.stats.dist += Math.floor(run.dist - (run.countedDist || 0));
   run.countedDist = run.dist;
-  if (run.t > 12) save.tutorialDone = true;
   report('score', finalScore);
   const up = missions.advanceIfComplete();
   persist();
@@ -1067,7 +1145,17 @@ function revive() {
   updateHudStatic();
 }
 
+function startNeon() {
+  audio.initAudio(); audio.resumeAudio(); audio.sfx.click();
+  save.playMode = 'neonrush'; save.settings.mode = 'classic'; persist();
+  if (mp.active) leaveRoom();
+  if (state !== 'menu') enterMenu();
+  tryPlay({ event: 'neon' });
+}
+function dropRival() { if (rival) { rival.dispose(); rival = null; } }
 function enterMenu(first = false, keepOverride = false) {
+  dropRival();
+  $('h-event').classList.add('hidden');
   if (!keepOverride) { mapOverride = null; run.daily = false; }
   state = 'menu';
   menuBlend = first ? 1 : menuBlend;
@@ -1202,12 +1290,11 @@ function setupUI() {
     if (save.coins >= c.cost) { save.coins -= c.cost; save.unlocked.push(c.id); save.character = c.id; persist(); audio.initAudio(); audio.sfx.buy(); renderMenu(); }
     else { audio.initAudio(); audio.sfx.deny(); }
   };
-  $('btnDuel').onclick = () => { audio.initAudio(); audio.sfx.click(); startDuel(); };
   let setTab = 'Gameplay';
   const drawSettings = () => {
     $('setTabs').innerHTML = SETTINGS.map((g) => `<button class="tab${g.tab === setTab ? ' sel' : ''}" data-t="${g.tab}">${g.tab.toUpperCase()}</button>`).join('');
     for (const b of $('setTabs').querySelectorAll('.tab')) b.onclick = () => { audio.sfx.click(); setTab = b.dataset.t; drawSettings(); };
-    renderSettingsTab($('setBody'), setTab, save.settings, (k, v) => { save.settings[k] = v; applySettings(k); persist(); });
+    renderSettingsTab($('setBody'), setTab, save.settings, (k, v) => { save.settings[k] = v; if (k === 'quality') save.settings.autoQuality = false; applySettings(k); persist(); });
   };
   $('btnSettings').onclick = () => { audio.initAudio(); audio.sfx.click(); drawSettings(); show('settings', true); };
   $('btnSetClose').onclick = () => { audio.sfx.click(); show('settings', false); persist(); };
@@ -1263,6 +1350,7 @@ function setupUI() {
   $('h-boardBtn').addEventListener('pointerdown', (e) => e.stopPropagation());
   $('btnRevive').onclick = revive;
   $('btnDaily').onclick = () => { const di = dailyInfo(); audio.initAudio(); mapOverride = di.map; tryPlay({ seed: di.seed, daily: true }); };
+  $('btnNeon').onclick = () => startNeon();
   setupOnline();
 }
 
@@ -1371,7 +1459,7 @@ function ensureGhost(id) {
   if (g && g.charId === ps.char && g.solid === solid) return g;
   if (g) scene.remove(g.ch.root, g.tag);
   const def = CHARACTERS.find((c) => c.id === ps.char) || CHARACTERS[0];
-  const ch = buildCharacter(def, CHAR_SCALE, { ghost: !solid });
+  const ch = buildCharacter(dressed(def, ps.eq), CHAR_SCALE, { ghost: !solid }); // other players wear what they have equipped (no aura on ghosts)
   const tag = nameTag(ps.name, solid ? '#7ee0a0' : undefined);
   scene.add(ch.root, tag);
   g = { ch, tag, charId: ps.char, solid };
@@ -1455,8 +1543,36 @@ function mpSend(dt) {
   net.send({ t: 'st', d: +run.dist.toFixed(1), s: Math.floor(run.score), x: +P.x.toFixed(2), y: +P.y.toFixed(2), sp: +run.speed.toFixed(1), a });
 }
 
+function spectateTick(dt) {
+  const alive = [...mp.players.values()].filter((p) => p.alive && p.id !== net.id);
+  if (!alive.length) return;
+  alive.sort((a, b) => b.d - a.d);
+  const lead = alive[0];
+  mp.camId = lead.id;
+  // Follow the leader at their pace (and catch up smoothly if they were already ahead when you went out).
+  const target = Math.max(12, (lead.sp || run.speed) + Math.max(0, lead.d - run.dist) * 1.2);
+  const sp = clamp(target, 8, 90);
+  world.update(dt, sp);
+  run.dist += sp * dt;
+  run.speed = damp(run.speed, sp, 3, dt);
+  const nm = $('specName'); if (nm) nm.textContent = lead.name;
+}
+function startSpectate() {
+  if (!mp.active || !mp.running) return;
+  if (![...mp.players.values()].some((p) => p.id !== net.id && p.alive)) return;
+  mp.spectate = true;
+  if (player && player.root) player.root.visible = false;
+  show('mpres', false);
+  const tag = $('specTag'); if (tag) tag.classList.remove('hidden');
+}
+function stopSpectate() {
+  mp.spectate = false;
+  if (player && player.root) player.root.visible = true;
+  const tag = $('specTag'); if (tag) tag.classList.add('hidden');
+}
 function mpFinishLocal(finalScore) {
   net.send({ t: 'dead', d: +run.dist.toFixed(1), s: finalScore });
+  stopSpectate();
   const me = mp.players.get(net.id);
   if (me) { me.alive = false; me.d = run.dist; me.s = finalScore; }
   show('mpres', true);
@@ -1467,6 +1583,8 @@ function renderMpWait() {
   $('mpWait').textContent = 'Waiting for the other runners...';
   const rows = [...mp.players.values()].map((p) => ({ name: p.name, d: p.id === net.id ? run.dist : p.d, alive: p.id === net.id ? false : p.alive })).sort((a, b) => b.d - a.d);
   $('mpRank').innerHTML = rows.map((r) => `<div class="lob-row"><b>${escapeHtml(r.name)}</b><span>${fmt(r.d)} m</span><span class="tag ${r.alive ? 'ok' : ''}">${r.alive ? 'RUNNING' : 'OUT'}</span></div>`).join('');
+  const sb = $('btnMpSpec');
+  if (sb) sb.style.display = mp.running && [...mp.players.values()].some((p) => p.id !== net.id && p.alive) ? '' : 'none';
 }
 
 function setupOnline() {
@@ -1511,13 +1629,13 @@ function setupOnline() {
   // Online without the lobby form: the account name comes from the save (guests get one on the fly).
   async function ensureOnline() {
     if (tainted()) throw new Error('Secret Menu options are active - turn them off to play online');
-    const name = (save.mpName || (online.player && online.player.name) || CHARACTERS[charIndex].name).trim().slice(0, 14);
+    const name = save.mpName || (online.player && !online.player.guest ? online.player.name : null);
     const p = await api.ensureAccount(name);
     if (!p) throw new Error('Could not reach the server');
     await connectNet();
   }
   ensureOnlineRef = ensureOnline;
-  social = initSocial({ inRace: () => mp.active, $, api, net, online, save, persist, audio, dialog, toast, show, CHARACTERS, charId: () => CHARACTERS[charIndex].id, ensureOnline, startDuel, startOffline: () => tryPlay(), tainted });
+  social = initSocial({ maps: () => Object.values(BIOMES).map((b) => ({ id: b.id, name: b.name })), setMap: (id) => { save.settings.map = id; persist(); enterMenu(); }, inRace: () => mp.active, $, api, net, online, save, persist, audio, dialog, toast, show, CHARACTERS, charId: () => CHARACTERS[charIndex].id, ensureOnline, startDuel, startNeon, startOffline: (o) => tryPlay(o || {}), tainted });
   $('btnOnline').onclick = async () => {
     audio.initAudio(); audio.sfx.click();
     $('lobName').value = save.mpName || CHARACTERS[charIndex].name;
@@ -1541,8 +1659,10 @@ function setupOnline() {
   $('btnLeaveRoom').onclick = () => leaveRoom();
   $('lobMap').onchange = (e) => net.send({ t: 'map', map: e.target.value });
   $('lobMap').innerHTML = MAP_LABELS.map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
-  $('btnMpLobby').onclick = () => { show('mpres', false); if (mp.room && mp.room.ranked) { leaveRoom(); return; } if (mp.room && mp.room.host === net.id) net.send({ t: 'lobby' }); mpToLobby(); };
-  $('btnMpLeave').onclick = () => { show('mpres', false); leaveRoom(); };
+  $('btnMpLobby').onclick = () => { stopSpectate(); show('mpres', false); if (mp.room && mp.room.ranked) { leaveRoom(); return; } if (mp.room && mp.room.host === net.id) net.send({ t: 'lobby' }); mpToLobby(); };
+  $('btnMpLeave').onclick = () => { stopSpectate(); show('mpres', false); leaveRoom(); };
+  $('btnMpSpec').onclick = () => { audio.sfx.click(); show('mpres', false); startSpectate(); };
+  $('specExit').onclick = () => { audio.sfx.click(); stopSpectate(); show('mpres', true); };
   $('btnRename').onclick = () => renameFlow();
   $('tabBtnPlay').onclick = () => showTab('play');
   $('tabBtnBoard').onclick = () => { showTab('board'); loadBoard(); };
@@ -1560,7 +1680,7 @@ function setupOnline() {
   }
   showLobbyViewRef = showLobbyView;
 
-  const BOARDS = [['classic', 'Classic'], ['nocoin', 'No Coin'], ['daily', 'Daily'], ['ranked', 'Ranked']];
+  const BOARDS = [['classic', 'Classic'], ['nocoin', 'No Coin'], ['daily', 'Daily'], ['guest', 'No account'], ['ranked', 'Ranked']];
   const PERIODS = [['all', 'All time'], ['week', 'This week'], ['day', 'Today']];
   async function loadBoard() {
     const chips = (list, key) => list.map(([id, label]) => `<button class="map-chip${boardSel[key] === id ? ' sel' : ''}" data-k="${key}" data-v="${id}" style="width:auto;display:inline-flex;margin:3px"><i style="background:${key === 'board' ? '#ffd23f' : '#9ad7ff'}"></i>${label}</button>`).join('');
@@ -1571,21 +1691,23 @@ function setupOnline() {
     const d = await api.leaderboard(boardSel.board, boardSel.period);
     if (!d) { $('boardRows').innerHTML = '<div class="stage-note">Server unreachable - leaderboards need the online server.</div>'; return; }
     const you = online.player ? online.player.name : '';
-    const rows = d.rows.map((r) => `<div class="lob-row${r.name === you ? ' me' : ''}"><b style="min-width:42px">#${r.rank}</b><b style="flex:1">${escapeHtml(r.name)}</b>${r.tier ? `<span class="tag">${r.tier}</span>` : ''}<span style="font-family:var(--font);color:var(--yellow)">${fmt(r.score)}</span>${r.dist != null ? `<span style="opacity:.7;font-size:15px">${fmt(r.dist)}m</span>` : `<span style="opacity:.7;font-size:15px">${r.wins}/${r.games}</span>`}</div>`).join('');
+    const rows = d.rows.map((r) => `<div class="lob-row${r.name === you ? ' me' : ''}"><b style="min-width:42px">#${r.rank}</b><b style="flex:1">${escapeHtml(r.name)}${r.tag ? `<span class="ptag">#${escapeHtml(r.tag)}</span>` : ''}</b>${r.tier ? `<span class="tag">${r.tier}</span>` : ''}<span style="font-family:var(--font);color:var(--yellow)">${fmt(r.score)}</span>${r.dist != null ? `<span style="opacity:.7;font-size:15px">${fmt(r.dist)}m</span>` : `<span style="opacity:.7;font-size:15px">${r.wins}/${r.games}</span>`}</div>`).join('');
     const yours = d.you ? `<div class="stage-note">Your best: <b style="color:var(--yellow)">${fmt(d.you.score)}</b>${d.you.rank ? ` (rank #${d.you.rank})` : ''}</div>` : '';
     $('boardRows').innerHTML = yours + (rows || '<div class="stage-note">No scores yet - be the first!</div>');
   }
 
-  net.on('queued', (m) => {
+  // `also` (not `on`): these events are already handled by src/social.js. `on` would REPLACE the social handler,
+  // which is exactly why the "Searching" screen could stay up after the race had started.
+  net.also('queued', (m) => {
     showLobbyView('search');
     const t0 = performance.now();
     clearInterval(searchTimer);
     $('srchNote').textContent = `Looking for runners near ${m.rating} (${m.tier})...`;
     searchTimer = setInterval(() => { const s = Math.floor((performance.now() - t0) / 1000); $('srchTime').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 250);
   });
-  net.on('searching', (m) => { $('srchNote').textContent = `Search range +/-${m.range} - ${m.found} runner${m.found > 1 ? 's' : ''} in range`; });
-  net.on('queue_cancelled', () => { clearInterval(searchTimer); showLobbyView('connect'); });
-  net.on('match', (m) => {
+  net.also('searching', (m) => { $('srchNote').textContent = `Search range +/-${m.range} - ${m.found} runner${m.found > 1 ? 's' : ''} in range`; });
+  net.also('queue_cancelled', () => { clearInterval(searchTimer); showLobbyView('connect'); });
+  net.also('match', (m) => {
     clearInterval(searchTimer);
     $('srchTime').textContent = 'MATCH!';
     $('srchNote').textContent = m.players.map((p) => `${p.name} (${p.rating})`).join('  vs  ');
@@ -1596,12 +1718,12 @@ function setupOnline() {
     mp.room = m;
     for (const p of m.players) {
       const old = mp.players.get(p.id) || { d: 0, s: 0, x: 0, y: 0, sp: 17, a: 'run', t: performance.now() / 1000, seen: false };
-      mp.players.set(p.id, { ...old, id: p.id, name: p.name, char: p.char, ready: p.ready, alive: p.alive, rating: p.rating, d: p.alive ? old.d : p.d, s: p.alive ? old.s : p.s });
+      mp.players.set(p.id, { ...old, id: p.id, name: p.name, char: p.char, eq: p.eq || null, ready: p.ready, alive: p.alive, rating: p.rating, d: p.alive ? old.d : p.d, s: p.alive ? old.s : p.s });
     }
     for (const id of [...mp.players.keys()]) if (!m.players.some((p) => p.id === id)) { mp.players.delete(id); dropGhost(id); }
     if (!mp.running) renderLobby();
   });
-  net.on('start', (m) => startMpRace(m));
+  net.also('start', (m) => startMpRace(m));
   net.on('st', (m) => {
     const p = mp.players.get(m.id);
     if (!p) return;
@@ -1611,7 +1733,9 @@ function setupOnline() {
   net.on('dead', (m) => { const p = mp.players.get(m.id); if (p) { p.alive = false; p.d = m.d; p.s = m.s; } });
   net.on('left', (m) => { mp.players.delete(m.id); dropGhost(m.id); });
   net.on('results', (m) => {
+    stopSpectate();
     mp.results = m.ranking;
+    trackEvent('match_end', { map: mp.room && mp.room.map, mode: mp.room && mp.room.mode, meta: { ranked: !!m.ranked, teams: !!m.teamMode, place: m.ranking.findIndex((r) => r.id === net.id) + 1, players: m.ranking.length, winner: m.winner ?? null } });
     mp.running = false;
     show('hud', false); show('mpres', true);
     const myRank = m.ranking.findIndex((r) => r.id === net.id) + 1;
@@ -1681,7 +1805,7 @@ function syncEconomy() {
 }
 
 const cloud = { ver: 0, timer: null, status: 'guest', last: 0, busy: false };
-const CLOUD_KEYS = ['settings', 'level', 'missions', 'stats', 'best', 'bestDist', 'bestCoins', 'tutorialDone', 'daily', 'mpName'];
+const CLOUD_KEYS = ['settings', 'level', 'missions', 'stats', 'best', 'bestDist', 'bestCoins', 'tutorialDone', 'tutStep', 'daily', 'mpName'];
 function cloudData() {
   const d = {};
   for (const k of CLOUD_KEYS) if (save[k] !== undefined && save[k] !== null) d[k] = save[k];
@@ -1939,7 +2063,7 @@ function initHubUI() {
 function renderProfile() {
   if (social) social.refresh();
   const p = online.player;
-  $('pfName').textContent = p ? p.name : 'Offline';
+  $('pfName').textContent = p ? `${p.name}${p.tag ? ' #' + p.tag : ''}` : 'Offline';
   $('pfTier').textContent = p ? p.tier : '-';
   $('pfRating').textContent = p ? fmt(p.rating) : '-';
   const rk = p && p.ranked, rn = $('rankedNote');
@@ -1990,6 +2114,7 @@ function renderLobby() {
 
 function mpToLobby() {
   mp.active = false; mp.running = false; mp.results = null;
+  stopSpectate();
   clearGhosts();
   enterMenu();
   show('lobby', true);
@@ -1998,6 +2123,7 @@ function mpToLobby() {
 
 function leaveRoom(fromClose = false) {
   if (!fromClose) net.send({ t: 'leave' });
+  stopSpectate();
   mp.active = false; mp.running = false; mp.counting = false; mp.room = null; mp.players.clear(); mp.results = null;
   clearGhosts();
   net.close();
@@ -2007,6 +2133,8 @@ function leaveRoom(fromClose = false) {
 }
 
 function startMpRace(m) {
+  trackEvent('match_start', { map: m.map, mode: m.mode, quality: save.settings.quality, meta: { ranked: !!m.ranked, size: m.size || 0, teams: !!m.teamMode, players: (m.players || []).length } });
+  stopSpectate();
   mp.active = true; mp.running = false; mp.counting = true; mp.results = null; mp.seed = m.seed;
   for (const p of mp.players.values()) { p.d = 0; p.s = 0; p.alive = true; p.seen = false; p.ready = false; }
   clearGhosts();
@@ -2035,20 +2163,58 @@ function startMpRace(m) {
 }
 
 // --------------------------------------------------------------- tutorial
-const tutSteps = [
-  [0.4, '← →   change lane'], [3.6, '↑  jump over barriers'], [7.2, '↓  roll under bars'], [10.8, 'Double-tap Space  hoverboard'],
+// First-run tutorial: six short steps, each one waiting for the real input (with a timeout so it can never block),
+// a skip button, progress dots and a small reward at the end. The step is saved, so a crash resumes where you were.
+const TUT_STEPS = [
+  { id: 'lane', title: 'Change lane', text: 'Press ← or → (or swipe) to switch lanes.', hint: 'You have three lanes - pick the free one early.', goal: 1 },
+  { id: 'jump', title: 'Jump', text: 'Press ↑ or Space to jump over red barriers.', hint: 'Jump just before the barrier.', goal: 1 },
+  { id: 'roll', title: 'Roll', text: 'Press ↓ to roll under striped bars.', hint: 'Rolling makes you shorter.', goal: 1 },
+  { id: 'coins', title: 'Collect coins', text: 'Grab 5 coins.', hint: 'Coins pay for boards and upgrades.', goal: 5 },
+  { id: 'board', title: 'Hoverboard', text: 'Double-tap Space (or B) to launch the hoverboard.', hint: 'It absorbs one crash.', goal: 1 },
+  { id: 'train', title: 'Dodge the trains', text: 'Trains are solid walls: change lane before they reach you.', hint: 'The flashing triangles warn you.', goal: 8, time: true },
 ];
-let tutIdx = 0;
-function updateTutorial() {
-  if (save.tutorialDone) return;
-  const tt = run.t - (run.introOn ? INTRO_T : 0);
-  if (tt < 0.05) tutIdx = 0;
-  if (tt >= 0 && tutIdx < tutSteps.length && tt >= tutSteps[tutIdx][0]) {
-    $('h-tut').innerHTML = `<div>${tutSteps[tutIdx][1]}</div>`;
-    const idx = tutIdx;
-    setTimeout(() => { if (tutIdx === idx + 1) $('h-tut').innerHTML = ''; }, 3200);
-    tutIdx++;
+let tutI = 0, tutT = 0, tutN = 0;
+const tutActive = () => !save.tutorialDone && state === 'playing' && !mp.active && !run.cheated && !run.explore && !(run.introOn && run.t < INTRO_T);
+function tutRender() {
+  const el = $('h-tut'); if (!el) return;
+  if (!tutActive() || tutI >= TUT_STEPS.length) { el.innerHTML = ''; el.classList.remove('tut'); return; }
+  const s = TUT_STEPS[tutI];
+  el.classList.add('tut');
+  el.innerHTML = `<div class="tut-top"><b>${t('STEP')} ${tutI + 1}/${TUT_STEPS.length}</b><span class="tut-dots">${TUT_STEPS.map((_, i) => `<i class="${i < tutI ? 'on' : ''}"></i>`).join('')}</span><button id="tutSkip">${t('SKIP')}</button></div>`
+    + `<div class="tut-title">${t(s.title)}</div><div class="tut-text">${t(s.text)}</div><small>${t(s.hint)}</small>`
+    + (s.time ? '<div class="tut-bar"><i></i></div>' : '');
+  const b = $('tutSkip'); if (b) b.onclick = () => { audio.sfx.click(); tutDone(); };
+}
+function tutDone() {
+  const first = !save.tutorialDone;
+  save.tutorialDone = true; save.tutStep = 0; persist();
+  const el = $('h-tut'); if (el) { el.innerHTML = ''; el.classList.remove('tut'); }
+  if (first) { save.coins += 100; persist(); bumpCoin(); toast('TUTORIAL COMPLETE! +100'); audio.sfx.mission(); }
+}
+function tutAdvance() {
+  tutI++; tutN = 0; tutT = 0; save.tutStep = tutI; persist();
+  if (tutI >= TUT_STEPS.length) tutDone(); else tutRender();
+}
+function tutorialEvent(name, n = 1) {
+  if (!tutActive() || tutI >= TUT_STEPS.length || TUT_STEPS[tutI].id !== name) return;
+  tutN += n;
+  if (tutN >= TUT_STEPS[tutI].goal) tutAdvance();
+}
+function updateTutorial(dt) {
+  if (!tutActive()) {
+    const el = $('h-tut');
+    if (el && el.innerHTML) { el.innerHTML = ''; el.classList.remove('tut'); }
+    return;
   }
+  if (tutI >= TUT_STEPS.length) { tutDone(); return; }
+  if (!tutT) tutRender();
+  tutT += dt;
+  const s = TUT_STEPS[tutI];
+  if (s.time) {
+    const bar = document.querySelector('#h-tut .tut-bar i');
+    if (bar) bar.style.width = `${Math.min(100, (tutT / s.goal) * 100)}%`;
+    if (tutT >= s.goal) tutAdvance();
+  } else if (tutT > 14) tutAdvance(); // never leave a player stuck on a step
 }
 
 // ------------------------------------------------------------------- camera
@@ -2057,6 +2223,18 @@ const camPos = new THREE.Vector3();
 let camX = 0, camY = 4.8, fov = 60, camRoll = 0;
 let camYs = 3.5, camZs = 6.1, camKick = 0, camLookX = 0;
 function updateCamera(dt) {
+  if (mp.spectate && mp.active) { // spectator: a chase camera behind the current leader's ghost
+    const lead = mp.players.get(mp.camId) || [...mp.players.values()].find((p) => p.alive && p.id !== net.id);
+    if (lead) {
+      const z = -(lead.d - run.dist);
+      camX = damp(camX, lead.x || 0, 8, dt); camYs = damp(camYs, 4.2, 8, dt); camZs = damp(camZs, 7.4, 5, dt); camLookX = damp(camLookX, lead.x || 0, 9, dt);
+      camera.position.set(camX, camYs, camZs);
+      camLook.set(camLookX, 1.15, z - 7);
+      camera.lookAt(camLook);
+      camera.fov = 58; camera.updateProjectionMatrix();
+      return;
+    }
+  }
   const t = easeInOut(clamp(1 - menuBlend, 0, 1));
   const base = P.groundSmooth;
   const air = Math.max(0, P.y - base - 1.0); // follow big altitude only (jetpack, sneakers), not ordinary hops
@@ -2108,12 +2286,14 @@ function updateCamera(dt) {
   camera.position.copy(camPos);
   camera.lookAt(camLook);
   camRoll = damp(camRoll, save.settings.tilt === false || save.settings.reduceMotion ? 0 : clamp(-P.vx * 0.0024, -0.07, 0.07) * t, 7, dt);
-  camera.rotateZ(camRoll);
-  let fovT = (save.settings.fov || 58) + cheats.camFov + (save.settings.dynFov === false || save.settings.reduceMotion ? 0 : Math.min(speedK, 1.5) * 16) + (P.jetting ? 8 : 0) + (P.onBoard ? 3 : 0) + (pw.sneakers > 0 && !P.grounded ? 4 : 0) + (P.vy < -10 ? 4 : 0) - (P.stumbleT > 0 ? 3 : 0);
+  camera.rotateZ(camRoll - funSlope * 0.25);
+  let fovT = (save.settings.fov || 58) + cheats.camFov + (save.settings.dynFov === false || save.settings.speedFx === false || save.settings.reduceMotion ? 0 : Math.min(speedK, 1.5) * 16) + (P.jetting ? 8 : 0) + (P.onBoard ? 3 : 0) + (pw.sneakers > 0 && !P.grounded ? 4 : 0) + (P.vy < -10 ? 4 : 0) - (P.stumbleT > 0 ? 3 : 0);
   if (state === 'dying' || state === 'over') fovT = 46;
   fovT = lerp(fovT, 44, introK);
   fov = damp(fov, lerp(46, fovT, t), 5, dt);
-  if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  // portrait screens: keep the same HORIZONTAL view as on a wide screen (the vertical fov is what Three.js takes), otherwise the track is a thin strip
+  const wide = camera.aspect < 1.4 ? Math.min(100, (2 * Math.atan(Math.tan((fov * Math.PI) / 360) * Math.min(1.78 / camera.aspect, 2.4)) * 180) / Math.PI) : fov;
+  if (Math.abs(camera.fov - wide) > 0.01) { camera.fov = wide; camera.updateProjectionMatrix(); }
 }
 
 // -------------------------------------------------------------------- theme
@@ -2140,7 +2320,7 @@ function applyTheme(th, dt, bs) {
 
 // --------------------------------------------------------------------- main
 let last = 0;
-let hudAcc = 0;
+let hudAcc = 0, perfClock = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   { // frame cap, frame statistics, adaptive resolution
@@ -2152,7 +2332,14 @@ function frame(now) {
     frame.lastDraw = now;
     const ms = prev ? Math.min(now - prev, 250) : 16.7;
     frameStats.push(ms);
+    perfClock += ms / 1000;
+    if (perfClock > 30 && state === 'playing' && !document.hidden) {
+      perfClock = 0;
+      const st = frameStats.summary();
+      if (st) trackPerf(st, s.quality, gpuTier.name, curBiomeId);
+    }
     if (s.autoRes !== false && state === 'playing' && run.t > 3 && !document.hidden) {
+      adapt.min = presetOf(s.quality).minRes || 0.55; // a potato can drop further than a gaming PC
       const k = adapt.push(ms, 1000 / (userCap || 60)); // target: the frame cap, or 60 fps
       if (k !== null) { autoK = k; applyPixelRatio(); }
     }
@@ -2181,21 +2368,21 @@ function frame(now) {
     // sub-steps: a slow frame must not let the world jump past a thin obstacle (or through a train's side) between two checks
     const steps = Math.min(2, Math.ceil(dt / 0.022));
     for (let i = 0; i < steps && (state === 'playing' || state === 'dying'); i++) updatePlaying(dt / steps);
-    updateTutorial();
+    updateTutorial(dt);
     updatePlayerVisual(dt);
     hudAcc += dt;
     updateHud();
   } else if (state === 'paused') {
     // frozen
   } else if (state === 'over') {
-    world.update(dt, 0);
+    if (mp.spectate && mp.active && mp.running) spectateTick(dt); else world.update(dt, 0);
     updatePlayerVisual(dt);
   }
 
   P.groundSmooth = damp(P.groundSmooth, state === 'playing' || state === 'dying' ? P.ground : 0, 6, dt);
   const themeDist = state === 'menu' ? 0 : world.dist;
   const bs = state === 'menu' ? { a: menuBiome(), b: menuBiome(), t: 0 } : world.biomeState(world.dist);
-  curTheme = themeAt(themeDist, bs.a, bs.b, bs.t, themeBase);
+  curTheme = themeAt(themeDist, bs.a, bs.b, bs.t, run.event === 'neon' ? 2 : themeBase);
   if (cheats.timeOfDay !== 'auto') curTheme = themeAt(0, bs.a, bs.b, bs.t, { day: 0, sunset: 1, night: 2 }[cheats.timeOfDay]);
   applyTheme(curTheme, dt, bs);
   scene.fog.near *= 1; scene.fog.far = Math.max(scene.fog.near + 20, scene.fog.far);
@@ -2241,7 +2428,7 @@ function frame(now) {
     if (grade) {
       gradeSpeed = damp(gradeSpeed, playing && !run.cheated ? clamp((run.speed - 19) / 22, 0, 1) : 0, 2.5, dt);
       const u = grade.uniforms, neon = curBiomeId === 'neon', tint = _gradeTint.set(1, 1, 1).lerp(_gradeSun.set(curTheme.sun), 0.16 - curTheme.night * 0.06).lerp(_gradeNight, curTheme.night * 0.35);
-      u.uSpeed.value = save.settings.reduceMotion ? 0 : gradeSpeed;
+      u.uSpeed.value = save.settings.reduceMotion || save.settings.speedFx === false ? 0 : gradeSpeed;
       u.uSat.value = damp(u.uSat.value, neon ? 1.22 : curBiomeId === 'tropic' ? 1.14 : 1.06, 2, dt);
       u.uCon.value = 1.04 + curTheme.night * 0.05;
       u.uVig.value = 0.2 + curTheme.night * 0.12;
@@ -2268,7 +2455,7 @@ function updatePlayerVisual(dt) {
     ch.root.position.y += Math.max(0, Math.sin(Math.min(cT, 0.5) * 6.3)) * 0.5 * Math.exp(-cT * 2);
   }
   const introSpray = !!run.introOn && run.t < SPRAY_T && state === 'playing';
-  ch.root.rotation.y = lerp(ch.root.rotation.y, introSpray ? Math.PI / 2 : 0, 1 - Math.exp(-(introSpray ? 14 : 8) * dt)); // faces the wall, then forward
+  ch.root.rotation.y = lerp(ch.root.rotation.y, introSpray ? Math.PI / 2 : -Math.atan(funSlope) * 0.9, 1 - Math.exp(-(introSpray ? 14 : 8) * dt)); // follows the path when the track snakes // faces the wall, then forward
   ch.can.visible = introSpray;
   ch.root.visible = !cheats.hideRunner;
   ch.root.scale.setScalar(cheats.runnerSize);
@@ -2286,8 +2473,15 @@ function updatePlayerVisual(dt) {
   ch.crashT = (state === 'dying') ? run.dieT : (state === 'over' ? 2 : 0);
   poseCharacter(ch, { state: st, speed: run.speed, vy: P.vy, vx: P.vx, rollP, crashT: ch.crashT, kind: st === 'crash' ? run.deathKind : P.hitKind, side: P.hitSide }, dt);
   ch.board.visible = P.onBoard && state !== 'dying';
-  ch.board.position.set(0, 0.1 + Math.sin(time * 6) * 0.015, 0);
-  ch.board.rotation.z = -P.vx * 0.012;
+  if (ch.board.visible) { // the deck hovers, carves with the runner and pulses its underglow
+    const carve = Math.sin(time * (3.4 + run.speed * 0.03));
+    ch.board.position.set(0, 0.08 + Math.sin(time * 7.5) * 0.03 + Math.sin(time * 2.1) * 0.012, -0.04 + carve * 0.03);
+    ch.board.rotation.z = -P.vx * 0.016 + carve * 0.07;
+    ch.board.rotation.x = -0.02 + Math.sin(time * 5.4) * 0.035;
+    ch.board.rotation.y = P.vx * 0.03 + carve * 0.05;
+    const glowMesh = ch.board.children[ch.board.children.length - 1];
+    if (glowMesh && glowMesh.material) glowMesh.material.opacity = 0.45 + 0.22 * Math.sin(time * 9);
+  }
   ch.jet.visible = !!P.jetting;
   for (const f of ch.flameMats) f.scale.set(1, 0.8 + Math.random() * 0.6, 1);
   // flashing while invulnerable
@@ -2361,12 +2555,17 @@ window.__game = {
   },
   setBot: (v) => { botOn = !!v; },
   setSpeed: (s) => { run.speed = s; },
+  rebuildPlayer: () => buildPlayer(),
+  bend, get funA() { return funA; },
   fastForward(m) { // test hook: scroll the world (difficulty follows the segment index), then clear the start zone and skip the intro
     for (let d = 0; d < m; d += 30) world.update(0.1, 300);
     world.clearAhead(70);
     if (run.introOn) { run.introOn = false; P.x = C.LANES[P.target]; }
   },
   addCoins: (n) => { save.coins += n; persist(); },
+  autoPerf: () => bootPerf,
+  startNeon,
+  rival: () => rival,
   cam: camera,
   scene, renderer, sun, hemi,
   save,

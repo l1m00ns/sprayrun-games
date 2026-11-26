@@ -5,11 +5,18 @@ export default function GameUI() {
       <canvas id="c" tabIndex={0}></canvas>
       <div id="ui">
         <div id="loading" className="screen">
+          <div className="load-scene" aria-hidden="true"><i></i><i></i><i></i></div>
           <div className="box">
             <img className="load-logo" src="/logo.png" alt="Reverse Surfers" />
-            <div className="load-track" aria-hidden="true"><i id="loadBar"></i></div>
+            <p className="load-tag">RUN - DODGE - OWN THE RAILS</p>
+            <div className="load-track" aria-hidden="true">
+              <span className="load-rail a"></span><span className="load-rail b"></span><span className="load-ties"></span>
+              <i id="loadBar"></i>
+              <b className="load-car"><u></u><u></u></b>
+            </div>
             <div className="load-row"><span id="loadTxt">Loading fonts…</span><span id="loadPct">0%</span></div>
             <p id="loadTip" className="tip"></p>
+            <div className="load-foot"><span id="loadGpu">AUTO</span><span id="loadVer"></span></div>
           </div>
         </div>
 
@@ -57,7 +64,7 @@ export default function GameUI() {
           </div>
           <div id="m-maps" className="card"><h3>MAP</h3><div id="mapList"></div></div>
           <div id="m-modes" className="card"><h3>MODE</h3><div id="modeList"></div></div>
-          <div id="m-side-btns"><button className="btn purple" id="btnOnline">ONLINE</button><button className="btn green" id="btnDaily">DAILY RUN</button><button className="btn gold hidden-ltm" id="btnDuel">GOLD RUSH</button></div>
+          <div id="m-side-btns"><button className="btn purple" id="btnOnline">ONLINE</button><button className="btn green" id="btnDaily">DAILY RUN</button><button className="btn neon hidden-ltm" id="btnNeon">NEON RUSH</button></div>
           <div className="hint"><kbd>←</kbd> <kbd>→</kbd> lanes &nbsp; <kbd>↑</kbd>/<kbd>Space</kbd> jump &nbsp; <kbd>↓</kbd> roll<br /><kbd>Space</kbd>×2 or <kbd>B</kbd> hoverboard &nbsp; <kbd>P</kbd> pause &nbsp; <kbd>M</kbd> mute</div>
         </div>
 
@@ -77,6 +84,7 @@ export default function GameUI() {
           <div id="h-toast" className=" ink"></div>
           <div id="h-tut" className=" ink"></div>
           <div id="h-cheat" className="hidden"></div>
+          <div id="h-event" className="hidden">NEON RUSH</div>
           <div id="h-boost" className="hidden"></div>
           <div id="drBanner" className="hidden"><b id="drbT"></b><small id="drbS"></small></div>
         </div>
@@ -126,11 +134,12 @@ export default function GameUI() {
           <div className="row" id="lobClose"><button className="btn sm" id="btnLobClose">BACK</button></div>
         </div></div>
 
+        <div id="specTag" className="hidden"><i className="dotlive"></i><b>SPECTATING</b><span id="specName"></span><button id="specExit">BACK TO RESULTS</button></div>
         <div id="mpres" className="screen modal hidden"><div className="panel">
           <h2 className=" ink" id="mpTitle">RACE OVER</h2>
           <div className="stage-note" id="mpWait"></div>
           <div id="mpRank"></div>
-          <div className="row"><button className="btn go" id="btnMpLobby">BACK TO LOBBY</button><button className="btn red" id="btnMpLeave">LEAVE</button></div>
+          <div className="row"><button className="btn" id="btnMpSpec" style={{ display: 'none' }}>SPECTATE</button><button className="btn go" id="btnMpLobby">BACK TO LOBBY</button><button className="btn red" id="btnMpLeave">LEAVE</button></div>
         </div></div>
 
         <div id="shop" className="screen modal hidden"><div className="panel"><h2 className=" ink">SHOP</h2>

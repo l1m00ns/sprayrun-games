@@ -232,10 +232,10 @@ function buildArena(renderer, low = false) {
 // ------------------------------------------------------------------------------------------- practice bot
 const LEVELS = {
   dummy: { react: 99, err: 0, turn: 0, fire: 99, strafe: 0, head: 0 },
-  easy: { react: 0.85, err: 0.11, turn: 2.2, fire: 0.62, strafe: 0.5, head: 0.08 },
-  normal: { react: 0.5, err: 0.06, turn: 3.6, fire: 0.46, strafe: 0.75, head: 0.15 },
-  hard: { react: 0.28, err: 0.03, turn: 5.5, fire: 0.38, strafe: 0.95, head: 0.3 },
-  pro: { react: 0.14, err: 0.012, turn: 9, fire: 0.33, strafe: 1.15, head: 0.55 },
+  easy: { react: 1.15, err: 0.16, turn: 1.7, fire: 0.85, strafe: 0.4, head: 0.04 },
+  normal: { react: 0.62, err: 0.085, turn: 2.9, fire: 0.6, strafe: 0.65, head: 0.1 },
+  hard: { react: 0.3, err: 0.035, turn: 4.8, fire: 0.42, strafe: 0.9, head: 0.24 },
+  pro: { react: 0.16, err: 0.014, turn: 7.5, fire: 0.34, strafe: 1.1, head: 0.45 },
 };
 function makeBot(spawn, level) {
   const L = LEVELS[level] || LEVELS.normal;
@@ -285,7 +285,7 @@ export function createDuel(ctx) {
   function ensureBuilt() {
     if (arena) return;
     const pm = new THREE.PMREMGenerator(renderer); ENV = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose();
-    arena = buildArena(renderer, save.settings.quality === 'low');
+    arena = buildArena(renderer, save.settings.quality === 'low' || save.settings.quality === 'potato');
     cam = new THREE.PerspectiveCamera(90, 1, 0.05, 220); arena.scene.add(cam);
     vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(52, 1, 0.01, 4);
     vmScene.add(new THREE.HemisphereLight(0xdfe8ff, 0x6a4d20, 1.1)); const dl = new THREE.DirectionalLight(0xfff0d0, 2.4); dl.position.set(-1, 2, 1.5); vmScene.add(dl);
@@ -296,6 +296,8 @@ export function createDuel(ctx) {
     gun.slide.position.z = 0;
     gun.spare = gun.mag.clone(); gun.spare.visible = false; gun.body.add(gun.spare);
     resize();
+    const lockEl = $('dLock');
+    if (lockEl) lockEl.onclick = () => { canvas.requestPointerLock && canvas.requestPointerLock(); };
   }
   function resize() { if (!cam) return; const a = window.innerWidth / window.innerHeight; cam.aspect = a; cam.updateProjectionMatrix(); vmCam.aspect = a; vmCam.updateProjectionMatrix(); }
 
@@ -338,8 +340,10 @@ export function createDuel(ctx) {
   };
   const onDown = (e) => {
     if (!D.active) return;
-    if (document.pointerLockElement !== canvas) { canvas.requestPointerLock && canvas.requestPointerLock(); return; }
-    if (e.button === 0) D.firing = true; if (e.button === 2) D.aim = true;
+    // The click that grabs the pointer must also fire: being sent back to "click to aim" felt like the gun was dead.
+    if (document.pointerLockElement !== canvas) canvas.requestPointerLock && canvas.requestPointerLock();
+    if (e.button === 0) { D.firing = true; if (D.phase === 'live') tryFire(); }
+    if (e.button === 2) D.aim = true;
   };
   const onUp = (e) => { if (e.button === 0) D.firing = false; if (e.button === 2) D.aim = false; };
   const onCtx = (e) => { if (D.active) e.preventDefault(); };
@@ -366,6 +370,7 @@ export function createDuel(ctx) {
   }
   function tryFire() {
     if (D.phase !== 'live' || D.me.hp <= 0) return;
+    D.crossKick = 1;
     const rate = A.GUN.interval / (cheats.duelRate || 1);
     if (D.t - D.lastShot < rate || D.reload > 0) return;
     if (D.me.ammo <= 0) { if (D.t - D.lastShot > 0.25) { audio.sfx.empty(); startReload(); D.lastShot = D.t; } return; }
@@ -423,7 +428,7 @@ export function createDuel(ctx) {
     D.me = { body: newBody(spawn), hp: A.HP, ammo: A.GUN.mag, name: opts.meName || 'YOU', moving: false, vx: 0, vz: 0 };
     D.foe = { body: newBody(foeSpawn), hp: A.HP, ammo: A.GUN.mag, name: opts.foeName || 'RIVAL', vx: 0, vz: 0, alive: true, yaw: foeSpawn.yaw, pitch: 0 };
     D.yaw = spawn.yaw; D.pitch = 0;
-    D.bot = D.online ? null : makeBot(foeSpawn, cheats.duelBot || opts.level || 'normal');
+    D.bot = D.online ? null : makeBot(foeSpawn, cheats.duelBot || opts.level || save.settings.duelBot || 'easy');
     buildAvatar(opts.foeChar);
     avatar.root.rotation.x = 0; avatar.root.visible = true; drawTag(D.foe.name, 100);
     cam.fov = save.settings.duelFov || 90; cam.updateProjectionMatrix();
@@ -504,6 +509,11 @@ export function createDuel(ctx) {
     D.bob += dt * (me.moving && b.ground ? 9 : 0);
     // --- shooting / reload / aim
     D.ads = damp(D.ads, live && D.aim && D.reload <= 0 ? 1 : 0, 14, dt);
+    D.crossKick = Math.max(0, (D.crossKick || 0) - dt * 6);
+    { // the crosshair tightens when aiming, opens when moving or right after a shot
+      const el = $('dCross');
+      if (el) el.style.setProperty('--cs', String(1 + (1 - D.ads) * 0.12 + (D.crossKick || 0) * 0.45 + Math.min(0.2, Math.hypot(me.vx || 0, me.vz || 0) * 0.012)));
+    }
     if (live && D.firing) tryFire();
     if (D.reload > 0) {
       D.reload += dt / A.GUN.reload;

@@ -3,11 +3,27 @@
 
 // What each preset switches on. `post` = bloom + cartoon outlines (EffectComposer, the expensive part).
 export const PRESETS = {
-  high:   { label: 'High',        post: true,  shadows: true,  shadowRes: 2048, prCap: 2,   particles: 1,    weather: 1,   birds: true,  aniso: 8, menuFps: 0 },
-  medium: { label: 'Balanced',    post: false, shadows: true,  shadowRes: 1024, prCap: 1.5, particles: 0.7,  weather: 0.7, birds: true,  aniso: 4, menuFps: 0 },
-  low:    { label: 'Performance', post: false, shadows: false, shadowRes: 512,  prCap: 1,   particles: 0.45, weather: 0.45, birds: false, aniso: 1, menuFps: 30 },
+  high:   { label: 'High',        post: true,  shadows: true,  shadowRes: 2048, prCap: 2,   particles: 1,    weather: 1,   birds: true,  aniso: 8, menuFps: 0,  minRes: 0.6 },
+  medium: { label: 'Balanced',    post: false, shadows: true,  shadowRes: 1024, prCap: 1.5, particles: 0.7,  weather: 0.7, birds: true,  aniso: 4, menuFps: 0,  minRes: 0.5 },
+  low:    { label: 'Performance', post: false, shadows: false, shadowRes: 512,  prCap: 1,   particles: 0.45, weather: 0.45, birds: false, aniso: 1, menuFps: 30, minRes: 0.4 },
+  // Potato: for very old machines, integrated graphics and software WebGL. No shadows, no post, quarter particles,
+  // no weather, a capped resolution and a low internal render scale. The game stays readable and playable.
+  potato: { label: 'Potato',      post: false, shadows: false, shadowRes: 256,  prCap: 0.7, particles: 0.18, weather: 0,    birds: false, aniso: 1, menuFps: 30, minRes: 0.3 },
 };
 export const presetOf = (q) => PRESETS[q] || PRESETS.high;
+export const ORDER = ['potato', 'low', 'medium', 'high'];
+// Startup benchmark: turn the first measured frame time into a preset. Never goes above the tier the GPU can
+// reasonably drive, never below Potato, and only moves one step at a time on a normal machine.
+export function benchmarkTier(avgMs, current = 'high', max = 'high') {
+  const i = Math.max(0, ORDER.indexOf(current) < 0 ? 3 : ORDER.indexOf(current));
+  const top = Math.max(0, ORDER.indexOf(max) < 0 ? 3 : ORDER.indexOf(max));
+  let next = i;
+  if (avgMs > 45) next = i - 2;
+  else if (avgMs > 30) next = i - 1;
+  else if (avgMs < 13 && i < 3) next = i + 1;
+  else if (avgMs < 20 && i < 2) next = i + 1;
+  return ORDER[Math.max(0, Math.min(next, top, 3))];
+}
 
 // ---- GPU tier. Conservative: only clear cases drop below "high", and a weak machine is never pushed to "high".
 const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic|mesa offscreen|virgl|vmware|parallels|virtualbox/;
@@ -21,16 +37,17 @@ export function gpuName(gl) {
   } catch { return ''; }
 }
 
-// Returns { tier: 'low'|'medium'|'high', name, why }
+// Returns { tier: 'potato'|'low'|'medium'|'high', name, why }
 export function detectTier(name = '', env = {}) {
   const n = String(name).toLowerCase();
   const { mobile = false, cores = 8, memory = 8 } = env;
   let tier = 'high', why = 'dedicated or modern graphics card';
-  if (SOFTWARE.test(n)) { tier = 'low'; why = 'software rendering (no GPU acceleration)'; }
+  if (SOFTWARE.test(n)) { tier = 'potato'; why = 'software rendering (no GPU acceleration)'; }
   else if (LOW_GPU.test(n)) { tier = 'low'; why = 'entry-level graphics chip'; }
   else if (MID_GPU.test(n) || mobile) { tier = 'medium'; why = mobile ? 'phone or tablet' : 'integrated or mid-range graphics'; }
   if (tier === 'high' && (cores <= 2 || memory <= 2)) { tier = 'medium'; why = 'limited CPU or memory'; }
   if (tier === 'medium' && mobile && (cores <= 4 || memory <= 3)) { tier = 'low'; why = 'low-end phone'; }
+  if (tier === 'low' && (cores <= 2 || memory <= 2)) { tier = 'potato'; why = 'very old or very small machine'; }
   return { tier, name: name || 'unknown', why };
 }
 

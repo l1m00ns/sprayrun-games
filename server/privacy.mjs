@@ -6,6 +6,8 @@
 // would be a way to erase a ban.
 import { db, q } from './db.mjs';
 import * as messages from './messages.mjs';
+import * as mmr from './mmr.mjs';
+import * as tournaments from './tournaments.mjs';
 import { checkPassword } from './auth.mjs';
 
 const all = (sql, ...a) => db.prepare(sql).all(...a);
@@ -42,6 +44,7 @@ export function deleteAccount(pid, { password, confirm } = {}) {
   db.exec('BEGIN');
   try {
     messages.deleteAllFor(pid);
+    mmr.removeFor(pid); tournaments.removeFor(pid);
     run('DELETE FROM friends WHERE a = ? OR b = ?', pid, pid);
     run('DELETE FROM friend_codes WHERE pid = ?', pid);
     for (const t of ['saves', 'purchases', 'advent_claims', 'runs', 'tickets']) if (tableExists(t)) run(`DELETE FROM ${t} WHERE pid = ?`, pid);

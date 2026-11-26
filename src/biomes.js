@@ -304,6 +304,23 @@ export function decorExtras(seg, A, id, index) {
       if (chance(0.4)) instanced(seg, A.props.oilTank, A.vc, scatter('desert', index, side, 1, 18, 42, 1.0, 1.6));
     }
   }
+  // A landmark every few segments, far outside the walls: each map gets a silhouette you can name at a glance.
+  if (index % 7 === 3) {
+    const side = index % 14 === 3 ? -1 : 1;
+    if (id === 'tropic') {
+      instanced(seg, A.props.palm, A.vc, scatter('tropic', index, side, 2, 28, 40, 2.6, 3.4, () => ({ y: -1.2, rz: (Math.random() - 0.5) * 0.16 })));
+      if (chance(0.55)) instanced(seg, A.props.pier, A.vc, [{ x: side * 33, y: -0.55, z: -rand(14, L - 14), s: 1.9, ry: side * Math.PI / 2 }]);
+    } else if (id === 'snow') {
+      instanced(seg, A.props.mountain, A.vc, scatter('snow', index, side, 1, 48, 80, 3.0, 4.2));
+      instanced(seg, A.props.iceCrystal, A.vc, scatter('snow', index, side, 3, 20, 34, 1.8, 2.8));
+    } else if (id === 'desert') {
+      instanced(seg, A.props.mesa, A.vc, scatter('desert', index, side, 1, 40, 80, 2.6, 3.8));
+    } else {
+      const bb = scatter(id, index, side, 1, 32, 56, 2.4, 3.2, () => ({ ry: side > 0 ? Math.PI * 0.62 : -Math.PI * 0.62, y: 0 }));
+      instanced(seg, A.props.billboardPost, A.vc, bb);
+      instanced(seg, A.props.billboardGlow, id === 'neon' ? A.signMats[index % 3] : A.billboardMats[index % A.billboardMats.length], bb);
+    }
+  }
 }
 
 export function decorDesert(seg, A, index) {

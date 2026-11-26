@@ -13,6 +13,7 @@ import * as devices from './devices.mjs';
 import * as social from './social.mjs';
 import * as messages from './messages.mjs';
 import * as privacy from './privacy.mjs';
+import * as tournaments from './tournaments.mjs';
 import * as ipintel from './ipintel.mjs';
 import { playerStats, globalStats } from './stats.mjs';
 import { rankedMinSeconds, BADGES } from './catalog.mjs';
@@ -163,6 +164,9 @@ export async function routeV2(req, res, url, me, route) {
     if (r) { reply(res, r.ok ? 200 : 400, r); return true; }
   }
 
+  // ----------------------------------------------------------------------------------------- tournaments
+  if (route === 'GET /api/tournaments') { reply(res, 200, tournaments.overview(me)); return true; }
+  { const tm = /^\/api\/tournaments\/([a-z0-9-]{6,24})$/.exec(url.pathname); if (tm && req.method === 'GET') { const d = tournaments.leaderboard(tm[1], me); if (d) reply(res, 200, d); else reply(res, 404, { error: 'not_found' }); return true; } }
   // ---------------------------------------------------------------------------------------- data rights
   if (route === 'GET /api/me/export' || route === 'POST /api/me/delete') {
     if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }

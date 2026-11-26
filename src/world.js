@@ -174,6 +174,9 @@ export function initWorldAssets() {
   A.yardMats = {};
   for (const id of BIOME_ORDER) A.yardMats[id] = texMat(yardTex, { color: tint[id] });
   A.yardGeo = new THREE.PlaneGeometry(5.2, L, 2, 24).rotateX(-Math.PI / 2).translate(0, 0.02, -L / 2);
+  // dashed lane boundaries: exact 2.2 m lanes, readable at speed without competing with the coins
+  A.laneGeo = new THREE.BoxGeometry(0.055, 0.012, 1.35);
+  A.laneMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2, depthWrite: false });
   A.yardRailGeo = mergeGeometries([-0.75, 0.75].map((x) => new THREE.BoxGeometry(0.1, 0.15, L, 1, 1, 24).translate(x, 0.1, -L / 2)));
   A.nightMats = [...A.facades.map((f) => f.mat), ...A.neonFacades.map((f) => f.mat)];
 }
@@ -243,6 +246,12 @@ class Segment {
     if (id === 'city') this.add(mesh(A.outerGeo, A.outerMat, false, true));
     else if (id === 'neon') this.add(mesh(A.outerGeo, A.outerMatNeon, false, true));
     this.add(mesh(A.railGeo, A.railMat, false, true));
+    { // lane dividers between the three lanes (x = -1.1 and +1.1), dashes every 4 m
+      const n = 2 * Math.ceil(L / 4), dashes = new THREE.InstancedMesh(A.laneGeo, A.laneMat, n), d = new THREE.Object3D();
+      let k = 0;
+      for (const x of [-C.LANE_W / 2, C.LANE_W / 2]) for (let z = -1; z > -L; z -= 4) { d.position.set(x, 0.016, z); d.updateMatrix(); dashes.setMatrixAt(k++, d.matrix); }
+      dashes.count = k; dashes.frustumCulled = false; dashes.castShadow = false; this.add(dashes);
+    }
 
     for (const side of [-1, 1]) {
       const wallX = side * 5.05;
@@ -381,10 +390,10 @@ class Segment {
 
 // --------------------------------------------------------------- coin field
 export class CoinField {
-  constructor(scene, capacity = 900) {
+  constructor(scene, capacity = 1800) {
     this.cap = capacity;
     this.mesh = new THREE.InstancedMesh(A.coinGeo, A.coinMat, capacity);
-    this.gem = new THREE.InstancedMesh(A.gemGeo, A.gemMat, 160);
+    this.gem = new THREE.InstancedMesh(A.gemGeo, A.gemMat, 240);
     this.col = new THREE.Color();
     for (const m of [this.mesh, this.gem]) {
       m.frustumCulled = false; m.castShadow = true; m.count = 0;
@@ -397,6 +406,23 @@ export class CoinField {
   }
   clear() { this.list.length = 0; this.mesh.count = 0; this.gem.count = 0; }
   add(x, y, z, v = 1) { if (this.list.length < this.cap) this.list.push({ x, y, z, v, mag: false, off: (x * 7.3 + z * 3.1) % 6.28 }); }
+  // Generation places coins and obstacles in the same pass, so a coin line could end up inside a train that was
+  // placed next to it. Called once per segment with the index where that segment's coins start: every coin whose
+  // centre is inside a solid is dropped, so nothing is ever visually buried in a wall.
+  prune(from, seg) {
+    const list = this.list;
+    for (let i = list.length - 1; i >= from; i--) {
+      const c = list[i];
+      if (c.z < seg.z - 70 || c.z > seg.z + 1) continue;
+      for (const s of seg.solids) {
+        if (s.kind === 'over' || s.kind === 'ramp') continue; // coins above/under a bar are reachable
+        if (Math.abs(c.x - s.x) > s.hw + 0.28) continue;
+        const z0 = seg.z + s.lz0 + (s.off || 0), z1 = seg.z + s.lz1 + (s.off || 0);
+        if (c.z < z0 - 0.3 || c.z > z1 + 0.3) continue;
+        if (c.y > s.yMin - 0.25 && c.y < s.yMax - 0.45) { list.splice(i, 1); break; }
+      }
+    }
+  }
   update(dt, speed, p, magnet, time, onCollect, onSparkle) {
     const d = this.dummy, list = this.list;
     const tint = this.noCoin ? this.col.setRGB(1, 0.18, 0.22) : this.col.setRGB(1, 1, 1);
@@ -417,6 +443,7 @@ export class CoinField {
       const rad = c.v > 1 ? 0.9 : 0.8;
       if (Math.abs(c.x - p.x) < rad && Math.abs(c.z) < 1.0 && Math.abs(c.y - (p.y + p.h * 0.5)) < p.h * 0.5 + 0.6) { onCollect(c); continue; }
       if (c.z > 1.4) continue;
+      if (c.z < -170) { list[w++] = c; continue; } // still ahead: keep it, but do not submit it to the GPU yet
       const bob = Math.sin(time * 3 + c.off) * 0.07;
       d.position.set(c.x, c.y + bob, c.z);
       d.rotation.set(0, time * (c.v > 1 ? 2.2 : 3.2) + c.off, 0);
@@ -498,6 +525,8 @@ export class World {
     this.onTrainMove = null;
     this.t = 0;
     this.noCoin = false;
+    this.noObstacles = false; // Explore mode: scenery only
+    this.genZ = 0; // world z of the segment being generated (coins and items live in player-relative space)
   }
 
   setNoCoin(v) { this.noCoin = !!v; this.coins.noCoin = !!v; }
@@ -564,10 +593,16 @@ export class World {
     s.z = z; s.group.position.z = z;
     s.index = this.nextIndex++;
     const biome = this.biomeForIndex(s.index);
+    // Obstacles are stored segment-local, but coins/items are stored in player space: they need the segment's z added,
+    // otherwise every coin line of every segment spawned right in front of the runner (the "coins never appear" bug).
+    this.genZ = s.z;
+    const coinMark = this.coins.list.length;
     withSeed(this.seed, s.index, () => {
       s.scenery(biome, s.index);
-      if (!calm) this.generate(s);
+      if (!calm && !this.noObstacles) this.generate(s);
     });
+    if (this.coins.list.length > coinMark) this.coins.prune(coinMark, s); // no coin buried in a train or a wall
+    this.genZ = 0;
     this.root.add(s.group);
     this.segs.push(s);
     return s;
@@ -614,16 +649,20 @@ export class World {
     }
   }
 
-  probe(px, py, ph, frontDepth) {
+  // `sweep` is how far the world moved this frame. A fast train can cross the whole collision band between two
+  // frames; without this the runner passed straight through it. Only lethal solids (trains, containers) are swept:
+  // barriers must not be landed on early.
+  probe(px, py, ph, frontDepth, sweep = 0) {
     let ground = 0, hit = null;
-    const HD = 0.3;
+    const HD = 0.3, travel = Math.min(Math.max(sweep || 0, 0), 8);
     for (const seg of this.segs) {
       const sz = seg.z;
       if (sz - L > 30 || sz < -60) continue;
       for (const s of seg.solids) {
         const off = s.off || 0;
         const zMax = sz + s.lz1 + off, zMin = sz + s.lz0 + off;
-        if (zMax < -HD || zMin > HD) continue;
+        const zPad = s.lethal ? travel : 0;
+        if (zMax < -HD - zPad || zMin > HD) continue;
         const adx = Math.abs(px - s.x);
         if (adx >= C.PLAYER_HW + s.hw) continue;
         let top = s.yMax;
@@ -690,10 +729,11 @@ export class World {
 
   // In No Coin mode only standalone coin lines (`free`) are kept: they never share a lane with an obstacle,
   // so a lane without coins is always available.
-  coinLine(x, y, z0, n, spacing = 1.8, free = false) { if (this.noCoin && !free) return; for (let i = 0; i < n; i++) this.coins.add(x, y, z0 - i * spacing); }
+  addCoin(x, y, z, v = 1) { this.coins.add(x, y, z + this.genZ, v); }
+  coinLine(x, y, z0, n, spacing = 1.8, free = false) { if (this.noCoin && !free) return; for (let i = 0; i < n; i++) this.addCoin(x, y, z0 - i * spacing); }
   coinArc(x, z0, n, spacing, base, h) {
     if (this.noCoin) return;
-    for (let i = 0; i < n; i++) { const t = n === 1 ? 0.5 : i / (n - 1); this.coins.add(x, base + Math.sin(t * Math.PI) * h, z0 - i * spacing); }
+    for (let i = 0; i < n; i++) { const t = n === 1 ? 0.5 : i / (n - 1); this.addCoin(x, base + Math.sin(t * Math.PI) * h, z0 - i * spacing); }
   }
 
   maybeItem(x, y, z, p = 0.22) {
@@ -704,7 +744,7 @@ export class World {
     let tot = 0; for (const a of w) tot += a[1];
     let r = R.f() * tot, type = 'magnet';
     for (const a of w) { r -= a[1]; if (r <= 0) { type = a[0]; break; } }
-    this.items.add(type, x, y, z);
+    this.items.add(type, x, y, z + this.genZ);
     return true;
   }
 
@@ -810,14 +850,14 @@ export class World {
         const n = randInt(8, 15), lane = pick(lanes);
         if (chance(0.3)) {
           const l2 = clamp(lane + (chance(0.5) ? 1 : -1), 0, 2);
-          for (let i = 0; i < n; i++) this.coins.add(C.LANES[Math.floor(i / 4) % 2 ? l2 : lane], 1.0, z - i * 1.8);
+          for (let i = 0; i < n; i++) this.addCoin(C.LANES[Math.floor(i / 4) % 2 ? l2 : lane], 1.0, z - i * 1.8);
         } else { this.coinLine(C.LANES[lane], 1.0, z, n, 1.8, true); this.maybeItem(C.LANES[lane], 1.4, z - n * 0.9, 0.2); }
         return n * 1.8;
       }
       case 'rest': {
         const lane = pick(lanes), n = randInt(16, 24);
         this.coinLine(C.LANES[lane], 1.0, z, n, 1.8, true);
-        if (chance(0.65)) this.coins.add(C.LANES[lane], 1.0, z - n * 1.8 - 1.2, 5); // gem worth 5
+        if (chance(0.65)) this.addCoin(C.LANES[lane], 1.0, z - n * 1.8 - 1.2, 5); // gem worth 5
         this.maybeItem(C.LANES[lane], 1.4, z - n * 0.9, 0.3);
         return n * 1.8;
       }

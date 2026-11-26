@@ -11,7 +11,9 @@ import { careerOf } from './players.mjs';
 export const DAILY_COIN_CAP = 60000;
 export const RUN_XP_CAP = 450;
 
-export const newInv = () => ({ boards: 2, chars: ['rio', 'kit'], up: { magnet: 0, jetpack: 0, sneakers: 0, mult: 0 }, cos: [], equip: { char: 'rio', outfit: null, board: null, trail: null } });
+const SLOT_CAT = { outfit: 'outfits', board: 'boardskins', trail: 'trails', bag: 'bags', aura: 'auras', style: 'styles', skin: 'skins' };
+export const SLOTS = ['outfit', 'board', 'trail', 'bag', 'aura', 'style', 'skin'];
+export const newInv = () => ({ boards: 2, chars: ['rio', 'kit'], up: { magnet: 0, jetpack: 0, sneakers: 0, mult: 0 }, cos: [], equip: { char: 'rio', outfit: null, board: null, trail: null, bag: null, aura: null, style: null, skin: null } });
 export function invOf(p) {
   let inv;
   try { inv = p.inv ? JSON.parse(p.inv) : null; } catch { inv = null; }
@@ -40,7 +42,7 @@ export function shopView(p) {
   for (const [id, c] of Object.entries(COSMETICS)) {
     const ev = c.event ? eventActive(c.event) : true;
     const owned = inv.cos.includes(id);
-    push({ id: `cos:${id}`, cat: c.slot === 'outfit' ? 'outfits' : c.slot === 'board' ? 'boardskins' : 'trails', name: c.name, desc: c.desc, rarity: c.rarity, price: c.price, owned, limited: c.event || null, exclusive: !!c.exclusive, kind: 'cosmetic', slot: c.slot, can: !owned && !c.exclusive && ev, lockedReason: !owned && c.exclusive ? 'Advent calendar exclusive' : !owned && !ev ? 'Only during the event' : null });
+    push({ id: `cos:${id}`, cat: SLOT_CAT[c.slot] || 'trails', name: c.name, desc: c.desc, rarity: c.rarity, price: c.price, owned, limited: c.event || null, exclusive: !!c.exclusive, kind: 'cosmetic', slot: c.slot, can: !owned && !c.exclusive && ev, lockedReason: !owned && c.exclusive ? 'Advent calendar exclusive' : !owned && !ev ? 'Only during the event' : null });
   }
   for (const [id, b] of Object.entries(BUNDLES)) {
     const ev = b.event ? eventActive(b.event) : true;
@@ -117,7 +119,7 @@ export function equip(pid, slot, id) {
     const p = q.getPlayer.get(pid);
     const inv = invOf(p);
     if (slot === 'char') { if (!inv.chars.includes(id)) return { ok: false, error: 'not_owned' }; inv.equip.char = id; }
-    else if (['outfit', 'board', 'trail'].includes(slot)) {
+    else if (SLOTS.includes(slot)) {
       if (id !== null && !(inv.cos.includes(id) && COSMETICS[id] && COSMETICS[id].slot === slot)) return { ok: false, error: 'not_owned' };
       inv.equip[slot] = id;
     } else return { ok: false, error: 'bad_slot' };
@@ -246,3 +248,15 @@ export function importLocal(pid, local) {
 }
 
 export { newCareer };
+
+// Tournament / event rewards: grants cosmetics that cannot be bought (idempotent: already-owned items are skipped).
+export function grantCosmetics(pid, ids) {
+  return tx(() => {
+    const p = q.getPlayer.get(pid);
+    if (!p) return [];
+    const inv = invOf(p), given = [];
+    for (const id of ids) if (COSMETICS[id] && !inv.cos.includes(id)) { inv.cos.push(id); given.push(id); }
+    if (given.length) save(pid, p, inv, p.wallet);
+    return given;
+  });
+}

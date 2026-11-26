@@ -3,7 +3,8 @@
 //   npm run build && npm start
 import http from 'node:http';
 import next from 'next';
-import { handleApi, attachWs } from './server/core.mjs';
+import { handleApi, attachWs, wsClients } from './server/core.mjs';
+import { hardenServer, installShutdown } from './server/ops.mjs';
 
 const dev = !process.argv.includes('--prod');
 const port = Number(process.env.PORT) || 3000;
@@ -16,7 +17,9 @@ const server = http.createServer(async (req, res) => {
   if (await handleApi(req, res)) return; // /api/*
   handle(req, res);
 });
+hardenServer(server);
 attachWs(server); // handles /ws
+installShutdown(server, wsClients);
 server.on('upgrade', (req, socket, head) => { if (!(req.url || '').startsWith('/ws')) upgrade(req, socket, head); }); // Next dev HMR
 
 server.listen(port, '0.0.0.0', () => console.log(`Reverse Surfers (${dev ? 'dev' : 'production'}) on http://localhost:${port}  - API /api, realtime /ws`));

@@ -4,6 +4,8 @@ import * as THREE from 'three';
 // and every rim-lit toon material uses the same tint.
 export const bend = {
   uBend: { value: new THREE.Vector2(0.0, 0.0011) },
+  uSway: { value: new THREE.Vector4(0, 0.028, 0, 7) }, // x: amplitude (m), y: spatial frequency, z: phase, w: where the runner is (view distance)
+  uHill: { value: new THREE.Vector3(0, 0.021, 0) }, // same for the vertical rolling hills
   uRimCol: { value: new THREE.Color(0xfff2d8) },
   uRimI: { value: 0.35 },
 };
@@ -20,6 +22,12 @@ mvPosition = modelViewMatrix * mvPosition;
 float bendD = max(-mvPosition.z - 10.0, 0.0);
 mvPosition.y -= bendD * bendD * uBend.y;
 mvPosition.x += bendD * bendD * uBend.x;
+if (uSway.x * uSway.x + uHill.x * uHill.x > 0.0004) { // only the fun modes pay for the sinuous track
+  float swd = max(-mvPosition.z - uSway.w, 0.0);
+  float swf = smoothstep(0.0, 14.0, swd);
+  mvPosition.x += uSway.x * (sin(uSway.y * swd + uSway.z) - sin(uSway.z)) * swf;
+  mvPosition.y += uHill.x * (sin(uHill.y * swd + uHill.z) - sin(uHill.z)) * swf;
+}
 gl_Position = projectionMatrix * mvPosition;
 `;
 
@@ -38,7 +46,9 @@ export function applyBend(material) {
   material.onBeforeCompile = (shader, renderer) => {
     if (prev) prev(shader, renderer);
     shader.uniforms.uBend = bend.uBend;
-    shader.vertexShader = 'uniform vec2 uBend;\n' + shader.vertexShader.replace('#include <project_vertex>', CHUNK);
+    shader.uniforms.uSway = bend.uSway;
+    shader.uniforms.uHill = bend.uHill;
+    shader.vertexShader = 'uniform vec2 uBend;\nuniform vec4 uSway;\nuniform vec3 uHill;\n' + shader.vertexShader.replace('#include <project_vertex>', CHUNK);
     if (rim) {
       shader.uniforms.uRimCol = bend.uRimCol;
       shader.uniforms.uRimI = bend.uRimI;

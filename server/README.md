@@ -1,6 +1,6 @@
 # Reverse Surfers - backend
 
-REST API + WebSocket server for Reverse Surfers: accounts, cloud save, server-side economy, ranked (Elo), the Gold Rush duel,
+REST API + WebSocket server for Reverse Surfers: accounts, cloud save, server-side economy, ranked (Elo), the arena prototype,
 fair play (anti-cheat), support and an AI review panel. Node >= 22.5 (uses the built-in `node:sqlite`), one dependency (`ws`).
 
 ```

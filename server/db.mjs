@@ -114,15 +114,20 @@ export const q = {
   recentMatches: st(`SELECT m.created, m.map, m.mode, mp.score, mp.dist, mp.place, mp.before, mp.after, mp.dq,
       (SELECT COUNT(*) FROM match_players x WHERE x.match_id = m.id) AS players
     FROM match_players mp JOIN matches m ON m.id = mp.match_id WHERE mp.pid = ? ORDER BY m.id DESC LIMIT ?`),
-  boardMode: st(`SELECT p.name AS name, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
+  boardMode: st(`SELECT p.name AS name, p.id AS pid, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
     FROM runs r JOIN players p ON p.id = r.pid
     WHERE r.mode = ? AND r.daily = 0 AND r.flagged = 0 AND p.banned = 0 AND r.created >= ?
     GROUP BY r.pid ORDER BY score DESC LIMIT ?`),
-  boardDaily: st(`SELECT p.name AS name, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
+  boardDaily: st(`SELECT p.name AS name, p.id AS pid, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
     FROM runs r JOIN players p ON p.id = r.pid
     WHERE r.daily = 1 AND r.dkey = ? AND r.flagged = 0 AND p.banned = 0
     GROUP BY r.pid ORDER BY score DESC LIMIT ?`),
-  boardRanked: st('SELECT name, rating AS score, games, wins FROM players WHERE games > 0 AND banned = 0 ORDER BY rating DESC LIMIT ?'),
+  // Players who never made an account still get their own board: a guest is a real player with a real score.
+  boardGuests: st(`SELECT p.name AS name, p.id AS pid, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
+    FROM runs r JOIN players p ON p.id = r.pid
+    WHERE r.mode = 'classic' AND r.daily = 0 AND r.flagged = 0 AND p.banned = 0 AND p.username IS NULL
+    GROUP BY r.pid ORDER BY score DESC LIMIT ?`),
+  boardRanked: st('SELECT name, id AS pid, rating AS score, games, wins FROM players WHERE games > 0 AND banned = 0 ORDER BY rating DESC LIMIT ?'),
   myBestMode: st('SELECT MAX(score) AS s FROM runs WHERE pid = ? AND mode = ? AND daily = 0 AND flagged = 0 AND created >= ?'),
   betterModeCount: st(`SELECT COUNT(*) AS n FROM (SELECT MAX(r.score) AS s FROM runs r JOIN players p ON p.id = r.pid
     WHERE r.mode = ? AND r.daily = 0 AND r.flagged = 0 AND p.banned = 0 AND r.created >= ? GROUP BY r.pid) WHERE s > ?`),

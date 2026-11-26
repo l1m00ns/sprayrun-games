@@ -9,7 +9,7 @@ export default function Privacy() {
       <h2>1. The short version</h2>
       <ul>
         <li>We collect only what the Game needs to work, to keep ranked fair and to keep you safe.</li>
-        <li>No advertising, no selling of data, no tracking cookies, no analytics profile of you.</li>
+        <li>No advertising, no selling of data, no tracking cookies. We keep lightweight product analytics (sessions, runs, performance) to fix bugs and balance the Game, and you can turn it off in Settings.</li>
         <li>You can download all your data and delete your account yourself, in Settings.</li>
       </ul>
 
@@ -26,6 +26,7 @@ export default function Privacy() {
           <tr><td>Support tickets, appeals and their messages</td><td>Answer you and review sanctions</td><td>Contract / legitimate interest</td></tr>
           <tr><td>Device and network signals: random device id, screen size, graphics card name, time zone, language, browser, a hash of your IP address and of its network (/24), the network operator and whether it is a VPN, proxy or datacenter</td><td>Detect cheating, duplicate accounts, ban evasion and VPN use in online play. Identifiers are stored as irreversible hashes</td><td>Legitimate interest (fair play and security)</td></tr>
           <tr><td>Technical data: connection time, ping, IP address handled by the server for rate limiting</td><td>Operate and protect the service</td><td>Legitimate interest</td></tr>
+          <tr><td>Product analytics: a random session id, pages opened, runs and matches started/finished, map, mode, score, distance, device type, screen size, language, time zone, browser, IP address and frame-rate samples</td><td>Measure stability and performance, find bugs and balance difficulty. IP addresses are shown only on the private admin dashboard and are erased after 30 days</td><td>Legitimate interest (improving the Game); opt out in Settings &gt; Gameplay</td></tr>
         </tbody>
       </table>
 
@@ -39,7 +40,7 @@ export default function Privacy() {
       </ul>
 
       <h2>5. Local storage on your device</h2>
-      <p>The Game stores your save, settings, a session token and a random device id in your browser&apos;s local storage. These are strictly necessary for the Game to work; there are no advertising or tracking cookies. Clearing site data resets offline progress.</p>
+      <p>The Game stores your save, settings, a session token and a random device id in your browser&apos;s local storage, and a random analytics session id in session storage (erased when the tab closes). These are strictly necessary for the Game to work; there are no advertising or tracking cookies. Clearing site data resets offline progress.</p>
 
       <h2>6. How long we keep it</h2>
       <ul>
@@ -48,10 +49,11 @@ export default function Privacy() {
         <li>Fair-play records of a sanctioned account (irreversible device hashes): kept after deletion for as long as needed to prevent ban evasion, then removed.</li>
         <li>Leaderboard and match rows: kept but anonymised (&quot;Deleted player&quot;) when you delete your account.</li>
         <li>Network lookups: cached for a few days.</li>
+        <li>Product analytics: events and performance samples for 90 days; the IP address on a session is erased after 30 days. The opt-out stops all collection immediately.</li>
       </ul>
 
       <h2>7. Your rights</h2>
-      <p>You can ask to access, correct, export, delete, restrict or object to the processing of your data, and to withdraw consent where we rely on it. Two buttons in <b>Settings &gt; Account</b> do it instantly: <b>Download my data</b> (a JSON file) and <b>Delete my account</b>. For anything else use the Support tab. You can also complain to your data protection authority.</p>
+      <p>You can ask to access, correct, export, delete, restrict or object to the processing of your data, and to withdraw consent where we rely on it. Analytics can be switched off at any time in <b>Settings &gt; Gameplay &gt; Usage analytics</b>. Two buttons in <b>Settings &gt; Account</b> do it instantly: <b>Download my data</b> (a JSON file) and <b>Delete my account</b>. For anything else use the Support tab. You can also complain to your data protection authority.</p>
 
       <h2>8. Children</h2>
       <p>The Game is not for children under 13. If you are under the age of digital consent in your country, your parent or guardian must agree to this policy. Parents can ask for deletion at any time. We do not show ads and we do not collect email addresses or real names.</p>

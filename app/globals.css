@@ -116,6 +116,20 @@ kbd { background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35)
 #h-guard.on { opacity: 1; animation: pulse .5s infinite alternate; }
 #h-tut { position: absolute; left: 0; right: 0; bottom: 20%; text-align: center; pointer-events: none !important; font-size: 28px; }
 #h-tut div { display: inline-block; background: var(--panel); border: 2px solid rgba(255,255,255,.3); border-radius: 18px; padding: 10px 24px; animation: pop .3s ease; }
+/* interactive first-run tutorial (six steps, skip, progress) */
+#h-tut.tut { left: 50%; right: auto; top: 13%; bottom: auto; transform: translateX(-50%); width: min(92vw, 440px); padding: 14px 18px; border-radius: 18px; text-align: left; font-size: 16px; background: linear-gradient(180deg, rgba(10,17,45,.95), rgba(10,17,45,.84)); border: 2px solid rgba(255,255,255,.2); box-shadow: 0 14px 34px rgba(0,0,0,.45); pointer-events: auto !important; animation: pop .25s ease; z-index: 6; }
+#h-tut.tut .tut-top { display: flex; align-items: center; gap: 10px; font: 700 12px var(--body); letter-spacing: .8px; color: var(--yellow); }
+#h-tut.tut .tut-dots { display: flex; gap: 4px; margin-left: auto; }
+#h-tut.tut .tut-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.25); }
+#h-tut.tut .tut-dots i.on { background: var(--yellow); }
+#tutSkip { background: none; border: 0; color: #fff; opacity: .6; font: 700 11px var(--body); letter-spacing: .5px; cursor: pointer; padding: 4px 0 4px 8px; }
+#tutSkip:hover { opacity: 1; }
+#h-tut.tut .tut-title { margin-top: 7px; font: 400 27px/1.1 var(--font); color: #fff; }
+#h-tut.tut .tut-text { margin-top: 3px; font-weight: 700; color: #fff; }
+#h-tut.tut small { display: block; margin-top: 3px; opacity: .65; font-weight: 600; }
+#h-tut.tut .tut-bar { height: 6px; margin-top: 10px; border-radius: 99px; background: rgba(255,255,255,.15); overflow: hidden; }
+#h-tut.tut .tut-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--yellow), var(--orange)); transition: width .12s linear; }
+@media (max-width: 640px) { #h-tut.tut { top: 10%; width: 94vw; padding: 12px 14px; } #h-tut.tut .tut-title { font-size: 23px; } }
 @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.06); } }
 @keyframes toast { 0% { transform: scale(.4) translateY(30px); opacity: 0; } 15% { transform: scale(1.15); opacity: 1; } 30% { transform: scale(1); } 80% { opacity: 1; } 100% { transform: translateY(-40px); opacity: 0; } }

@@ -22,6 +22,7 @@ for (const u of UPDATES) { add(u.title); (u.tags || []).forEach(add); (u.notes |
 for (const g of SCHEMA) { add(g.tab); for (const it of g.items) { add(it.label); add(it.hint); (it.opts || []).forEach(([, n]) => add(n)); } }
 for (const g of GROUPS) { add(g); add(g.toUpperCase()); }
 for (const o of OPTIONS) { add(o.label); add(o.hint); (o.opts || []).forEach(([, n]) => add(n)); }
+try { const { COSMETICS } = await import('../server/catalog.mjs'); for (const c of Object.values(COSMETICS)) { add(c.name); add(c.desc); } } catch { /* catalog unavailable */ }
 try { const m = await import('../src/strings.js'); (m.UI_STRINGS || []).forEach(add); } catch { /* no strings file yet */ }
 const ALL = [...keys];
 

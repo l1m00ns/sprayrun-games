@@ -26,8 +26,40 @@ export const TRAILS = {
   t_snow:   { color: 0xcfe9ff, kind: 'snow' },
 };
 
-// The runner definition actually built for the player: base character + equipped outfit.
-export function dressed(def, outfitId) {
-  const o = outfitId && OUTFITS[outfitId];
-  return o ? { ...def, ...o, id: def.id } : def;
+// Skins: a different look (skin tone, hair, eyes) applied on top of any runner.
+export const SKINS = {
+  sk_ocean: { skin: '#5fb4e6', hair: '#d9f0ff', eyes: '#0b3a6a' },
+  sk_ghost: { skin: '#d9ecff', hair: '#8aa6ff', eyes: '#6a5cff' },
+  sk_lava:  { skin: '#3a2a2a', hair: '#ff6a1a', eyes: '#ffb347' },
+  sk_crown: { skin: '#f2c14a', hair: '#fff2b0', eyes: '#7a4a00' },
+};
+// Backpacks are drawn by characters.js (buildBagVariant); this list gives the shop its colours.
+export const BAGS = { bg_cat: '#f5efe6', bg_rocket: '#e8e8ee', bg_guitar: '#7a4a2a', bg_wings: '#ffffff', bg_cube: '#29f0ff', bg_cup: '#ffd23f' };
+// Auras: two colours (rings + rising sparks) and a feel.
+export const AURAS = {
+  au_ember: { color: 0xff7a1a, color2: 0xffd23f, kind: 'ember' },
+  au_frost: { color: 0x7ec8ff, color2: 0xffffff, kind: 'frost' },
+  au_volt:  { color: 0x29d6ff, color2: 0xffffff, kind: 'volt' },
+  au_royal: { color: 0xffd23f, color2: 0xff3d7f, kind: 'royal' },
+  au_dawn:  { color: 0xff9f5a, color2: 0xff3d7f, kind: 'dawn' },
+};
+// Run styles: how the runner moves (stride rate/size, forward lean, arms swept back, bounce, pumping arms).
+export const STYLES = {
+  st_chill:    { rate: 0.8, amp: 0.7, lean: -0.05, armsBack: 0, bounce: 0.3, pump: 0 },
+  st_ninja:    { rate: 1.1, amp: 1.0, lean: 0.35, armsBack: 2.1, bounce: 0.1, pump: 0 },
+  st_bounce:   { rate: 0.95, amp: 1.0, lean: 0, armsBack: 0, bounce: 2.4, pump: 0 },
+  st_sprinter: { rate: 1.2, amp: 1.3, lean: 0.22, armsBack: 0, bounce: 0.8, pump: 1 },
+};
+
+// The runner definition actually built for the player: base character + everything equipped. `equip` is the inventory's equip
+// object ({ outfit, skin, bag, aura, style }); a plain outfit id is still accepted.
+export function dressed(def, equip) {
+  const e = typeof equip === 'string' ? { outfit: equip } : (equip || {});
+  let out = def;
+  if (e.outfit && OUTFITS[e.outfit]) out = { ...out, ...OUTFITS[e.outfit], id: def.id };
+  if (e.skin && SKINS[e.skin]) out = { ...out, ...SKINS[e.skin], id: def.id };
+  if (e.bag && BAGS[e.bag]) out = { ...out, bagId: e.bag };
+  if (e.aura && AURAS[e.aura]) out = { ...out, auraId: e.aura };
+  if (e.style && STYLES[e.style]) out = { ...out, styleId: e.style };
+  return out;
 }

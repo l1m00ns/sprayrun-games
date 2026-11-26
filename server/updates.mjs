@@ -1,6 +1,17 @@
 // Update history shown in the game's "Updates" tab. Newest first. Edit this file when you ship something.
 export const UPDATES = [
   {
+    version: '1.6.0', date: '2026-11-25', title: 'Style, tournaments, phones',
+    tags: ['cosmetics', 'tournaments', 'mobile'],
+    notes: [
+      'New cosmetic slots: backpacks, auras, run styles and skins, with exclusive pieces that only tournaments give.',
+      'Automatic tournaments: a Daily Sprint every evening and a Weekly Cup every weekend. Your best Classic run counts, nothing to sign up for, rewards are paid automatically.',
+      'Matchmaking rating per ladder (Solo, Duos, Trios) with an uncertainty that makes new players move faster, and a limit on the gap between teammates in ranked.',
+      'Phones: a bottom navigation bar in portrait, a slim top bar in landscape, safe areas and a wider view in portrait.',
+      'Backend: graceful restarts, daily database backups, flood protection and a deep health check.',
+    ],
+  },
+  {
     version: '1.5.0', date: '2026-11-25', title: 'Talk, trust, translate',
     tags: ['social', 'legal'],
     notes: [

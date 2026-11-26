@@ -32,7 +32,28 @@ ok(stats.late.maxCars >= 4, 'late game has trains of 4+ carriages', `max=${stats
 ok(stats.late.avgMovingCars > stats.early.avgMovingCars, 'oncoming trains get longer over the run', `${stats.early.avgMovingCars} -> ${stats.late.avgMovingCars}`);
 ok(stats.mid.trains > stats.early.trains, 'more trains as the run goes on', `${stats.early.trains} -> ${stats.mid.trains}`);
 
-// ---- 2. a train is a solid wall: running into it is a crash, the roof cannot be stood on
+// ---- 2. no coin ends up inside a train, a container or a low barrier
+const coinCheck = await page.evaluate(() => {
+  const g = window.__game; g.setMap('city'); g.start(); g.fastForward(1);
+  let bad = 0, coins = 0;
+  for (let k = 0; k < 25; k++) {
+    g.fastForward(55);
+    for (const c of g.world.coins.list) {
+      coins++;
+      for (const seg of g.world.segs) for (const s of seg.solids) {
+        if (s.vz || s.kind === 'over' || s.kind === 'ramp') continue;
+        if (Math.abs(c.x - s.x) > s.hw + 0.2) continue;
+        const z0 = seg.z + s.lz0 + (s.off || 0), z1 = seg.z + s.lz1 + (s.off || 0);
+        if (c.z < z0 || c.z > z1) continue;
+        if (c.y > s.yMin - 0.2 && c.y < s.yMax - 0.4) bad++;
+      }
+    }
+  }
+  return { bad, coins };
+});
+ok(coinCheck.bad === 0, 'no coin is generated inside a wall', JSON.stringify(coinCheck));
+
+// ---- 3. a train is a solid wall: running into it is a crash, the roof cannot be stood on
 const t1 = await page.evaluate(() => {
   const put = (g, lane, wz, cars, vz = 0) => { const segs = g.world.segs; const seg = segs.find((s) => s.z - 64.8 <= wz && wz <= s.z) || segs[0]; return g.world.placeTrain(seg, lane, wz - seg.z, cars, false, 'city', vz); };
   const g = window.__game;

@@ -3,6 +3,7 @@
 // instead of a bare {"error":"not_found"}.
 import { reply } from './http.mjs';
 import { BACKEND_FULL_VERSION } from './version.mjs';
+import { analyticsPage } from './analytics-page.mjs';
 
 const startedAt = Date.now();
 const GROUPS = [
@@ -12,6 +13,7 @@ const GROUPS = [
   ['Runs and ranking', ['POST /api/run/start', 'POST /api/run/finish', 'GET /api/leaderboard', 'GET /api/profile', 'GET /api/career', 'GET /api/stats', 'GET /api/stats/global']],
   ['Support and appeals', ['GET|POST /api/support', 'GET /api/support/status', 'GET|POST /api/support/tickets', 'GET|POST /api/appeals']],
   ['Realtime', ['WebSocket /ws (ranked queue, rooms, Gold Rush duel)']],
+  ['Analytics', ['POST /api/analytics/event', 'GET /api/analytics/summary (ADMIN_KEY)', 'GET /analytics (dashboard)']],
 ];
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -43,6 +45,17 @@ export function landing(req, res) {
   const host = req.headers.host || '';
   if (p === '/health' || p === '/healthz') { reply(res, 200, { ok: true }); return true; } // platform health checks (Render, Fly, Railway)
   if (p === '/api') { reply(res, 200, info(host)); return true; }
+  if (p === '/analytics' || p === '/analytics.html') {
+    // The page shell is public; the numbers require the ADMIN_KEY and are fetched from /api/analytics/summary.
+    const html = analyticsPage();
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow',
+      'Content-Security-Policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'",
+    });
+    res.end(head ? undefined : html);
+    return true;
+  }
   if (p === '/favicon.ico') { res.writeHead(204); res.end(); return true; }
   if (p === '/robots.txt') { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end(head ? undefined : 'User-agent: *\nDisallow: /api/\n'); return true; }
   if (p === '/') {

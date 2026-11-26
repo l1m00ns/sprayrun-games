@@ -41,27 +41,44 @@ export function initSocial(ctx) {
     }
     return '';
   }
+  // Category tabs + one big preview of the selected mode + a card per mode of that category. Selecting a card applies
+  // it immediately (the header and the PLAY button update), USE (or Enter) closes the picker, Escape closes it too.
+  let pickCat = null;
   function renderPicker() {
-    const body = $('mpBody');
+    const body = $('mpBody'), cur = current();
+    if (!pickCat) pickCat = cur.cat;
+    const maps = ctx.maps ? ctx.maps() : [];
+    const catTabs = CATS.map(([id, label]) => `<button class="mp-cat${pickCat === id ? ' sel' : ''}" data-cat="${id}">${esc(label)}<i>${MODES.filter((m) => m.cat === id).length}</i></button>`).join('');
     const card = (m) => {
       const off = pickDisabled(m);
-      return `<button class="mp-card${m.id === current().id ? ' sel' : ''}${off ? ' off' : ''}" data-id="${m.id}" ${off ? `title="${esc(off)}"` : ''}>${modeArt(m)}<b>${esc(m.name)}</b><small>${esc(m.tag)}</small>${off ? `<span class="mp-lock">${icon('lock', 16)}<i>${esc(off)}</i></span>` : `<span class="chip">${esc(m.label)}</span>`}</button>`;
+      const kind = m.ltm ? 'LIMITED' : m.kind === 'ranked' ? 'RANKED' : m.online ? 'NORMAL' : 'OFFLINE';
+      return `<button class="mp-card${m.id === cur.id ? ' sel' : ''}${off ? ' off' : ''}" data-id="${m.id}" ${off ? 'aria-disabled="true"' : ''}>${modeArt(m)}<span class="mp-badge ${off ? 'off' : ''}">${off ? 'LOCKED' : kind}</span><b>${esc(m.name)}</b><small>${esc(m.tag)}</small>${off ? `<span class="mp-lock">${icon('lock', 16)}<i>${esc(off)}</i></span>` : m.id === cur.id ? '<span class="mp-tick">✓</span>' : ''}</button>`;
     };
-    body.innerHTML = `<div class="mp-rules"><span>Rules</span><div class="seg"><button data-r="classic" class="${rules() === 'classic' ? 'sel' : ''}">Classic</button><button data-r="nocoin" class="${rules() === 'nocoin' ? 'sel' : ''}">No Coin</button></div><small>${esc(current().blurb)}</small></div>`
-      + CATS.map(([cat, label]) => `<h4>${esc(label)}</h4><div class="mp-grid">${MODES.filter((m) => m.cat === cat).map(card).join('')}</div>`).join('');
-    for (const b of body.querySelectorAll('.mp-card')) b.onclick = () => {
-      const m = modeById(b.dataset.id);
-      if (pickDisabled(m)) { audio.sfx.deny(); toast(pickDisabled(m)); return; }
-      audio.sfx.click(); save.playMode = m.id; persist();
-      if (m.kind && net.connected && isLeader()) net.send({ t: 'p_spec', spec: specOf(m, rules()) });
-      show('modePick', false); renderModeCard();
-    };
+    body.innerHTML = `<div class="mp-head"><div class="mp-cats">${catTabs}</div><div class="mp-now">${modeArt(cur, { size: 'lg' })}<div class="mp-now-txt"><small>${esc(catName(cur))}</small><h3>${esc(cur.name)}</h3><p>${esc(cur.blurb)}</p><div class="mp-tags"><span class="chip">${esc(cur.tag)}</span><span class="chip">${cur.online ? (cur.kind === 'ranked' ? 'RANKED' : cur.ltm ? 'LIMITED TIME' : 'NORMAL') : 'OFFLINE'}</span>${cur.size > 1 ? `<span class="chip">${cur.size} v ${cur.size}</span>` : ''}</div></div></div></div>`
+      + `<div class="mp-grid">${MODES.filter((m) => m.cat === pickCat).map(card).join('')}</div>`
+      + (maps.length ? `<div class="mp-rules"><span>Map</span><div class="seg wrap">${maps.map((b) => `<button data-map="${esc(b.id)}" class="${save.settings.map === b.id ? 'sel' : ''}">${esc(b.name)}</button>`).join('')}</div></div>` : '')
+      + `<div class="mp-rules"><span>Rules</span><div class="seg"><button data-r="classic" class="${rules() === 'classic' ? 'sel' : ''}">Classic</button><button data-r="nocoin" class="${rules() === 'nocoin' ? 'sel' : ''}">No Coin</button></div><small>${esc(pickDisabled(cur) || cur.blurb)}</small></div>`
+      + `<div class="mp-foot"><button class="btn sm" id="mpGo">USE THIS MODE</button></div>`;
+    for (const b of body.querySelectorAll('[data-cat]')) b.onclick = () => { audio.sfx.click(); pickCat = b.dataset.cat; renderPicker(); };
+    for (const b of body.querySelectorAll('.mp-card')) {
+      const choose = () => {
+        const m = modeById(b.dataset.id), why = pickDisabled(m);
+        if (why) { audio.sfx.deny(); toast(why); return; }
+        audio.sfx.click(); save.playMode = m.id; persist();
+        if (m.kind && net.connected && isLeader()) net.send({ t: 'p_spec', spec: specOf(m, rules()) });
+        renderModeCard(); show('modePick', false);
+      };
+      b.onclick = choose;
+      b.ondblclick = choose;
+    }
+    const go = $('mpGo'); if (go) go.onclick = () => { audio.sfx.click(); show('modePick', false); renderModeCard(); };
+    for (const b of body.querySelectorAll('[data-map]')) b.onclick = () => { audio.sfx.click(); ctx.setMap(b.dataset.map); renderPicker(); };
     for (const b of body.querySelectorAll('[data-r]')) b.onclick = () => {
       audio.sfx.click(); save.settings.mode = b.dataset.r; persist(); renderPicker(); renderModeCard();
       const m = modeById(save.playMode); if (m.kind && net.connected && isLeader()) net.send({ t: 'p_spec', spec: specOf(m, rules()) });
     };
   }
-  $('modeCard').onclick = () => { if (followsLeader()) { toast('The party leader picks the mode'); return; } if (S.search) return; audio.sfx.click(); renderPicker(); show('modePick', true); };
+  $('modeCard').onclick = () => { if (followsLeader()) { toast('The party leader picks the mode'); return; } if (S.search) return; audio.sfx.click(); pickCat = current().cat; renderPicker(); show('modePick', true); };
   $('mpClose').onclick = () => { audio.sfx.click(); show('modePick', false); };
 
   // -------------------------------------------------------------------------------------------------- playing
@@ -70,9 +87,8 @@ export function initSocial(ctx) {
     if (followsLeader()) { toast('Waiting for the party leader'); return; }
     const m = modeById(save.playMode);
     audio.initAudio(); audio.resumeAudio();
-    if (!m.online) { if (m.id === 'daily') $('btnDaily').click(); else { save.settings.mode = m.mode || 'classic'; persist(); startOffline(); } return; }
+    if (!m.online) { if (m.id === 'daily') $('btnDaily').click(); else { save.settings.mode = m.mode || 'classic'; persist(); startOffline({ fun: m.fun || null, explore: !!m.explore, event: m.event || null }); } return; }
     if (m.room) { $('btnOnline').click(); return; }
-    if (m.ltm) { startDuel(); return; }
     const lock = rankedLock();
     if (m.kind === 'ranked' && lock) { audio.sfx.deny(); toast(pickDisabled(m)); return; }
     S.busy = true; renderModeCard();
@@ -288,10 +304,11 @@ export function initSocial(ctx) {
   net.on('friend_req', (m) => { audio.sfx.power(); toast(`${m.from.name} sent you a friend request`); loadFriends(); });
   net.on('friend_ok', (m) => { toast(`${m.who.name} accepted your friend request`); loadFriends(); });
   net.on('friend_presence', (m) => { if (S.fr) { const f = S.fr.friends.find((x) => x.id === m.id); if (f) { f.presence = m.presence; if (!$('friends').classList.contains('hidden')) renderFriends(); } } });
-  net.on('tq_queued', (m) => openSearch(m.spec, { rating: m.rating, tier: m.tier, note: m.size > 1 ? 'Looking for opponents' : 'Looking for runners' }));
+  net.on('tq_queued', (m) => openSearch(m.spec, { rating: m.rating, tier: m.tier, note: m.size > 1 ? 'Looking for opponents' : 'Looking for runners at your MMR' }));
   net.on('tq_searching', (m) => { if (S.search) { S.search.note = `${m.found} of ${m.need} runners found`; const n = $('soNote'); if (n) n.textContent = S.search.note; } });
   net.on('tq_cancelled', () => closeSearch());
-  also('queued', (m) => { if (S.busy) openSearch({ kind: 'ranked', size: 1, mode: m.mode }, { rating: m.rating, tier: m.tier, note: 'Looking for runners near your rating' }); });
+  // Always open the launch screen when the server confirms the queue (S.busy can already be false on a slow network).
+  also('queued', (m) => openSearch({ kind: 'ranked', size: 1, mode: m.mode }, { rating: m.rating, tier: m.tier, note: 'Looking for runners at your MMR' }));
   also('searching', (m) => { if (S.search) { S.search.note = `Range ±${m.range} · ${m.found} runner${m.found > 1 ? 's' : ''} in range`; const n = $('soNote'); if (n) n.textContent = S.search.note; } });
   also('queue_cancelled', () => { if (S.search) closeSearch(); });
   also('match', (m) => {
@@ -301,8 +318,14 @@ export function initSocial(ctx) {
     if (m.teams) { S.search.teams = m.teams; S.search.mine = m.teams.findIndex((t) => t.some((p) => online.player && p.name === online.player.name)); }
     renderSearch(); const n = $('soNote'); if (n) { n.textContent = 'MATCH FOUND'; n.classList.add('found'); }
     audio.sfx.power();
+    // Failsafe: even if the launch event is lost, the search screen can never outlive the match it found.
+    clearTimeout(S.matchT); S.matchT = setTimeout(() => { if (S.matched) closeSearch(); }, 6000);
   });
-  also('start', () => { if (!S.search) return; S.search.phase = 2; S.search.note = 'GO!'; renderSearch(); const n = $('soNote'); if (n) n.classList.add('found'); setTimeout(closeSearch, 500); });
+  also('start', () => {
+    clearTimeout(S.matchT);
+    if (S.search) { S.search.phase = 2; S.search.note = 'GO!'; renderSearch(); const n = $('soNote'); if (n) n.classList.add('found'); }
+    setTimeout(closeSearch, 450);
+  });
   also('authed', () => { renderParty(); loadFriends(); loadConvs(); });
   let retry = 0;
   also('close', () => {
@@ -312,6 +335,17 @@ export function initSocial(ctx) {
     setTimeout(() => { if (!net.connected && !ctx.inRace()) ensureOnline().then(() => { retry = 0; }).catch(() => {}); }, wait);
   });
   also('authed', () => { retry = 0; });
+  // Mode picker shortcuts: arrows switch category, Enter confirms, Escape closes.
+  window.addEventListener('keydown', (e) => {
+    const box = $('modePick'); if (!box || box.classList.contains('hidden')) return;
+    if (e.key === 'Escape') { e.preventDefault(); show('modePick', false); return; }
+    if (e.key === 'Enter') { e.preventDefault(); const g = $('mpGo'); if (g) g.click(); return; }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const cats = CATS.map((c) => c[0]);
+      const i = (cats.indexOf(pickCat) + (e.key === 'ArrowRight' ? 1 : -1) + cats.length) % cats.length;
+      pickCat = cats[i]; renderPicker(); e.preventDefault();
+    }
+  });
 
   // ------------------------------------------------------------------------------------------------- public
   if (!save.playMode) save.playMode = 'solo-classic'; // a new player can always start at once; online modes are one pick away
