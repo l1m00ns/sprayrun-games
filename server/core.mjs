@@ -191,16 +191,16 @@ const strike = (pid, kind = 'violation', detail = '', severity = 1) => strikeP(p
 // fair-play judge (AI with a rule fallback) agrees that the evidence is more than a skilled / throttled player.
 function reviewFlags(pid, flags, body, ticket) {
   const cls = classify(flags);
-  const hard = cls.filter((f) => f.hard);
   const detail = { flags: flags.join(','), score: body.score, dist: body.dist, coins: body.coins, time: body.time, mode: ticket.mode };
-  if (hard.length) { strike(pid, 'run:' + hard.map((f) => f.flag).join('+'), detail, 2); return; }
-  const evId = recordEvent(pid, 'run_soft', detail, 1);
+  const hard = cls.filter((f) => f.hard);
+  if (hard.length) { strike(pid, 'run:' + hard.map((f) => f.flag).join('+'), detail, 2); return; } // a rule-level impossible value, never an AI guess
+  const evId = recordEvent(pid, 'run_review', detail, 1);
   const p = q.getPlayer.get(pid);
   const ceiling = { maxDist: Math.round(maxDistAt(body.time)), maxScore: Math.round(maxScore(body.dist, body.coins)) };
   judge({ kind: 'run', flags: cls, run: { score: body.score, dist: body.dist, coins: body.coins, time: body.time, stats: body.stats, input: body.input, mode: ticket.mode }, ceiling, account: { ageDays: Math.floor((now() - p.created) / 86400000), games: p.games, strikes: p.strikes } }, { pid })
     .then((v) => {
       q.setEventVerdict.run(JSON.stringify({ verdict: v.verdict, confidence: v.confidence, reasons: v.reasons, summary: v.summary, source: v.source, rounds: v.rounds, votes: v.votes, tokens: v.tokens, cached: !!v.cached }), v.recommended_action, evId);
-      if ((v.verdict === 'cheating' && v.confidence !== 'low') || v.recommended_action === 'strike' || v.recommended_action === 'kick') strike(pid, 'judge:' + v.verdict, v.summary, 1);
+      // Deliberately no strike here: the AI can flag, but only a human can sanction. This removes false positives.
     }).catch(() => { /* judge failures never affect the player */ });
 }
 
@@ -294,7 +294,7 @@ function leaveAll(ws) {
 function checkFinish(room) {
   if (room.state !== 'running') return;
   // Gold Rush guarantee: the duel happens at least once per game. If somebody crashed before the first warp, warp NOW.
-  if (room.ltm && !room.duelCount && !room.duel && !room.warping) {
+  if (room.ltm === 'goldrush' && !room.duelCount && !room.duel && !room.warping) {
     const conn = [...room.players.values()].filter((p) => p.ws.readyState === 1);
     if (conn.length === 2 && conn.some((p) => !p.alive)) { room.warpAt = Math.min(room.warpAt || Infinity, now() + 300); return; }
   }
@@ -302,9 +302,20 @@ function checkFinish(room) {
   if (alive.length === 0 || now() - room.startedAt > 8 * 60 * 1000) finish(room);
 }
 
+// A finished race must release every party that entered it. A solo ranked queue keeps a party row too; without this
+// it stays 'queued' and the next PLAY is silently ignored by the server.
+function resetParties(room) {
+  const seen = new Set();
+  for (const p of room.players.values()) {
+    if (!p.pid) continue;
+    const party = social.partyOf(p.pid);
+    if (party && !seen.has(party.id)) { seen.add(party.id); social.setPartyState(party.id, 'idle'); }
+  }
+}
 function finish(room) {
   if (room.teamMode) return finishTeams(room);
   room.state = 'results';
+  resetParties(room);
   const all = [...room.players.values()];
   for (const p of all) { // final plausibility check on what each player claims
     if (!p.dq && p.ac) {
@@ -344,7 +355,11 @@ const QUICK_ELO = 30; // same MMR: pair at once, no waiting for a fourth runner
 const QUICK_WAIT = 3; // otherwise a few seconds to find a closer opponent, then go anyway
 const searchWindow = (e, t) => Math.min(50 + ((t - e.joined) / 1000) * 30, 900); // widens as you wait
 function dequeue(ws) {
-  for (const k of Object.keys(queues)) queues[k] = queues[k].filter((e) => e.ws !== ws);
+  for (const k of Object.keys(queues)) {
+    const gone = queues[k].filter((e) => e.ws === ws && e.party);
+    queues[k] = queues[k].filter((e) => e.ws !== ws);
+    for (const e of gone) social.setPartyState(e.party, 'idle'); // a solo ranked queue also owns a party row
+  }
   for (let i = tq.length - 1; i >= 0; i--) { // a member of a waiting group leaves: the whole group stops searching
     const e = tq[i];
     if (!e.wsList.includes(ws)) continue;
@@ -353,14 +368,14 @@ function dequeue(ws) {
     if (e.party) social.setPartyState(e.party, 'idle');
   }
 }
-function enqueue(ws, mode) {
+function enqueue(ws, mode, partyId = null) {
   if (!ws.player || ws.player.banned) { send(ws, { t: 'err', msg: ws.player ? 'Ranked is disabled for this account' : 'Sign in first' }); return false; }
   if (mode !== 'duel') { // ranked ladders: a minimum amount of real playing time first
     const have = careerOf(q.getPlayer.get(ws.player.id)).time, need = rankedMinSeconds();
     if (have < need) { send(ws, { t: 'err', code: 'ranked_locked', msg: `Ranked unlocks after ${Math.max(1, Math.ceil(need / 60))} minutes of play (${Math.max(1, Math.ceil((need - have) / 60))} min to go).`, need, have: Math.floor(have) }); return false; }
   }
   leaveAll(ws);
-  queues[mode].push({ ws, joined: now(), rating: ws.player.rating, mode, pid: ws.player.id, links: collusionSet(ws.player.id) });
+  queues[mode].push({ ws, joined: now(), rating: ws.player.rating, mode, pid: ws.player.id, party: partyId, links: collusionSet(ws.player.id) });
   send(ws, { t: 'queued', mode, rating: Math.round(ws.player.rating), tier: tierOf(ws.player.rating) });
   return true;
 }
@@ -400,7 +415,7 @@ function matchTick() {
 function startRankedMatch(group, mode) {
   const isDuel = mode === 'duel';
   const room = newRoom({ ranked: !isDuel, ltm: isDuel ? 'goldrush' : null, mode: isDuel ? 'classic' : mode, map: MAPS[Math.floor(Math.random() * MAPS.length)], state: 'lobby' });
-  for (const g of group) addToRoom(g.ws, room, { char: g.ws.char });
+  for (const g of group) { addToRoom(g.ws, room, { char: g.ws.char }); if (g.party) social.setPartyState(g.party, 'ingame'); } // otherwise a solo ranked party stays 'queued' and PLAY does nothing after the race
   pushRoom(room);
   broadcast(room, { t: 'match', code: room.code, map: room.map, mode: room.mode, ranked: !isDuel, ltm: room.ltm, players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, rating: Math.round(p.rating), tier: tierOf(p.rating) })) });
   setTimeout(() => startRace(room, 3), 3500).unref();
@@ -409,16 +424,16 @@ function startRace(room, countdown = 3) {
   if (room.state !== 'lobby' || room.players.size === 0) return;
   room.state = 'running'; room.startedAt = now() + countdown * 1000;
   room.seed = Math.floor(Math.random() * 2 ** 31);
-  if (room.ltm) { room.warpAt = room.startedAt + (Number(process.env.DUEL_WARP_MS) || 25000 + Math.random() * 35000); room.duel = null; room.overAt = 0; room.warping = false; } // the track warps into the arena at a random moment
+  if (room.ltm === 'goldrush') { room.warpAt = room.startedAt + (Number(process.env.DUEL_WARP_MS) || 25000 + Math.random() * 35000); room.duel = null; room.overAt = 0; room.warping = false; } // only Gold Rush warps into the arena
   for (const p of room.players.values()) { p.alive = true; p.d = 0; p.s = 0; p.ready = false; p.dq = false; p.ac = null; p.left = false; }
-  broadcast(room, { t: 'start', seed: room.seed, map: room.map, mode: room.mode, ranked: room.ranked, countdown });
+  broadcast(room, { t: 'start', seed: room.seed, map: room.map, mode: room.mode, ranked: room.ranked, ltm: room.ltm || null, countdown });
   pushRoom(room);
 }
 
 // ---- teams: normal / ranked Duos and Trios (2 teams of N), normal Solo (free for all) ---------------------------------
 // A queue entry is a GROUP (a whole party, or one player). A party always lands on the same team.
 const tq = [];
-const specKey = (s) => `${s.kind}:${s.size}:${s.mode}`;
+const specKey = (s) => `${s.kind}:${s.size}:${s.mode}:${s.event || ''}`;
 const avgRating = (list) => list.reduce((s, e) => s + e.rating * e.wsList.length, 0) / Math.max(1, list.reduce((s, e) => s + e.wsList.length, 0));
 function enqueueGroup(wsList, spec, partyId) {
   const members = wsList.filter((w) => w.player && w.readyState === 1);
@@ -430,7 +445,7 @@ function enqueueGroup(wsList, spec, partyId) {
       if (have < need) return { ok: false, code: 'ranked_locked', msg: `${ws.player.name}: ranked unlocks after ${Math.max(1, Math.ceil(need / 60))} minutes of play (${Math.max(1, Math.ceil((need - have) / 60))} min to go)` };
     }
   }
-  if (spec.kind === 'ranked' && spec.size === 1) { const ok = enqueue(members[0], spec.mode); return { ok }; } // the classic ranked ladder (free for all, Elo by place)
+  if (spec.kind === 'ranked' && spec.size === 1) { const ok = enqueue(members[0], spec.mode, partyId || members[0].party || null); return { ok }; } // the classic ranked ladder (free for all, Elo by place)
   for (const ws of members) leaveAll(ws);
   const links = new Set(); for (const ws of members) for (const l of collusionSet(ws.player.id)) links.add(l);
   const bucket = mmr.bucketOf(spec), g = mmr.groupRating(members.map((w) => mmr.get(w.player.id, bucket)));
@@ -505,10 +520,11 @@ function matchTeams(t) {
 const takeFromQueue = (entries) => { for (const e of entries) { const i = tq.indexOf(e); if (i >= 0) tq.splice(i, 1); } };
 function startFFA(entries, spec) {
   takeFromQueue(entries);
-  const room = newRoom({ ranked: false, mode: spec.mode, map: MAPS[Math.floor(Math.random() * MAPS.length)], state: 'lobby' });
+  const ltm = spec.event === 'neon' ? 'neon' : null;
+  const room = newRoom({ ranked: false, mode: spec.mode, ltm, map: spec.event === 'neon' ? 'neon' : MAPS[Math.floor(Math.random() * MAPS.length)], state: 'lobby' });
   for (const e of entries) { for (const ws of e.wsList) addToRoom(ws, room, { char: ws.char }); if (e.party) social.setPartyState(e.party, 'ingame'); }
   pushRoom(room);
-  broadcast(room, { t: 'match', code: room.code, map: room.map, mode: room.mode, ranked: false, players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, rating: p.rating == null ? null : Math.round(p.rating), tier: p.rating == null ? null : tierOf(p.rating) })) });
+  broadcast(room, { t: 'match', code: room.code, map: room.map, mode: room.mode, ranked: false, ltm: room.ltm, players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, rating: p.rating == null ? null : Math.round(p.rating), tier: p.rating == null ? null : tierOf(p.rating) })) });
   setTimeout(() => startRace(room, 3), 3500).unref();
 }
 function startTeamMatch(teams, spec) {
@@ -553,8 +569,7 @@ function finishTeams(room) {
       send(p.ws, { t: 'rating', before: Math.round(row.rating), after: Math.round(after), delta: Math.round(delta * 10) / 10, place: p.place, tier: tierOf(after), dq: !!p.dq, team: true });
     }
   } else if (!room.ranked) for (const p of humans) if (!p.dq) addXp(p.pid, 15 + (p.team === winner ? 25 : 0));
-  const seen = new Set();
-  for (const p of humans) { const party = social.partyOf(p.pid); if (party && !seen.has(party.id)) { seen.add(party.id); social.setPartyState(party.id, 'idle'); } }
+  resetParties(room);
   pushRoom(room);
   setTimeout(() => { if (room.state === 'results' && [...room.players.values()].every((p) => p.ws.readyState !== 1)) rooms.delete(room.code); }, 60000).unref();
 }

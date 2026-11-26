@@ -14,7 +14,7 @@ const rankedBlurb = ['', 'Free for all, up to 4 runners. Rating moves with your 
 const normalBlurb = ['', 'Free for all, up to 4 runners. No rating at stake.', '2 v 2, just for fun. Queue alone or with a friend.', '3 v 3, just for fun. Bring two friends or get matched.'];
 
 export const MODES = [
-  { id: 'neonrush', cat: 'ltm', name: 'Neon Rush', tag: 'After dark, every rail glows', blurb: 'The city goes dark and the track lights up. A free Double Score at the start, a magnet at 400 m, and neon everywhere. Limited-time event.', online: false, size: 1, mode: 'classic', event: 'neon', colors: ['#16002e', '#ff2bd6'], ic: 'power', label: 'Limited time' },
+  { id: 'neonrush', cat: 'ltm', name: 'Neon Rush', tag: 'After dark, every rail glows', blurb: 'The city goes dark and the track lights up. A free Double Score at the start, a magnet at 400 m, and neon everywhere. Limited-time event, online or offline.', online: true, kind: 'normal', size: 1, mode: 'classic', event: 'neon', colors: ['#16002e', '#ff2bd6'], ic: 'power', label: 'Limited time' },
   ...[1, 2, 3].map((n) => ({ id: `ranked-${n}`, cat: 'ranked', name: `Ranked ${SIZES[n]}`, tag: n === 1 ? 'Free for all' : `${n} v ${n}`, blurb: rankedBlurb[n], online: true, kind: 'ranked', size: n, colors: ['#3a1a6a', '#b04dff'], ic: 'crown', label: SIZES[n] })),
   ...[1, 2, 3].map((n) => ({ id: `normal-${n}`, cat: 'normal', name: `Normal ${SIZES[n]}`, tag: n === 1 ? 'Free for all' : `${n} v ${n}`, blurb: normalBlurb[n], online: true, kind: 'normal', size: n, colors: ['#0e4a7a', '#29d6ff'], ic: 'flag', label: SIZES[n] })),
   { id: 'solo-classic', cat: 'other', name: 'Classic Run', tag: 'Offline, just you', blurb: 'Collect coins and survive as long as you can. Works without a connection.', online: false, size: 1, mode: 'classic', colors: ['#6a3a00', '#ff9a1f'], ic: 'coin', label: 'Offline' },
@@ -25,7 +25,7 @@ export const MODES = [
   { id: 'room', cat: 'other', name: 'Custom Room', tag: 'Code, friends, your rules', blurb: 'Create a room, share its code and race your friends on the map you choose.', online: true, room: true, size: 1, colors: ['#3a3a4a', '#9aa2b1'], ic: 'game', label: 'Room' },
 ];
 export const modeById = (id) => MODES.find((m) => m.id === (id === 'goldrush' ? 'neonrush' : id)) || MODES.find((m) => m.id === 'normal-1'); // old saves picked Gold Rush
-export const specOf = (m, rules) => ({ kind: m.kind === 'ranked' ? 'ranked' : 'normal', size: m.size, mode: rules === 'nocoin' ? 'nocoin' : 'classic' });
+export const specOf = (m, rules) => ({ kind: m.kind === 'ranked' ? 'ranked' : 'normal', size: m.size, mode: rules === 'nocoin' ? 'nocoin' : 'classic', event: m.event || null });
 export const sizeName = (n) => SIZES[n] || 'Solo';
 export function modeFromSpec(spec) { return MODES.find((m) => m.kind === spec.kind && m.size === spec.size) || modeById('normal-1'); }
 

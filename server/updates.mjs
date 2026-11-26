@@ -1,6 +1,17 @@
 // Update history shown in the game's "Updates" tab. Newest first. Edit this file when you ship something.
 export const UPDATES = [
   {
+    version: '2.0.1', date: '2026-11-26', title: 'Spectator, online modes, fair play',
+    tags: ['fix', 'online', 'fair-play'],
+    notes: [
+      'Spectator mode rebuilt: the camera follows the current leader with the normal chase rig, the dead runner no longer blocks the view, and every online runner sees the same obstacles (moving trains stay deterministic and crashes no longer delete trains locally).',
+      'Neon Rush can now be played online, with the same queue, search, preparation and launch flow as the other multiplayer modes. All multiplayer rooms now carry their limited-time event to every player.',
+      'Fixed PLAY doing nothing after a finished match: every party leaves the game state at the end of a race, so the next search starts immediately. Stale search overlays are cleared on start, results and leaving a room.',
+      'Fair play is review-first where judgement is involved: the AI judge and a single soft flag can no longer strike or kick anyone. Only hard rule violations (impossible distance, teleport) still disqualify a race, and repeated physical violations alone can end a session.',
+      'Default camera height raised slightly for a clearer view of the track, and the secret menu has been removed completely (no button, no Konami code, no ² shortcut).',
+    ],
+  },
+  {
     version: '2.0.0', date: '2026-11-26', title: 'Premium codes, four seasons, HDRI',
     tags: ['major', 'content', 'events'],
     notes: [
@@ -55,7 +66,6 @@ export const UPDATES = [
       'Palm Bay rebuilt: animated sea with foam and glitter, a pier, tiki bar, volleyball net, canoe, buoys and leaning palms. Cranes, water towers, igloos and adobe houses on other maps.',
       'High preset: colour grading, speed blur and dynamic lights (runner glow, oncoming headlights).',
       'New loading screen, a redrawn board icon and Iconsax icons in the top bar. Fixes: the NEW badge no longer covers the Updates tab, and the Career tiles line up.',
-      'Secret menu: press the key left of 1 to open or close it, even mid-run; search, per-tab counters and an Unload button to go back online.',
       'Backend: a status page at its root, configurable CORS, and a Render blueprint.',
     ],
   },

@@ -136,7 +136,8 @@ export function cleanSpec(s) {
   const kind = s && s.kind === 'ranked' ? 'ranked' : 'normal';
   const size = [1, 2, 3].includes(Number(s && s.size)) ? Number(s.size) : 1;
   const mode = s && s.mode === 'nocoin' ? 'nocoin' : 'classic';
-  return { kind, size, mode };
+  const event = s && s.event === 'neon' ? 'neon' : null;
+  return { kind, size, mode, event };
 }
 function view(party) {
   return {

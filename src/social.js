@@ -9,7 +9,7 @@ import { trackEvent } from './analytics.js';
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s) % 60).padStart(2, '0')}`;
 
 export function initSocial(ctx) {
-  const { $, api, net, online, save, persist, audio, dialog, toast, show, CHARACTERS, charId, ensureOnline, startDuel, startOffline, tainted } = ctx;
+  const { $, api, net, online, save, persist, audio, dialog, toast, show, CHARACTERS, charId, ensureOnline, startDuel, startOffline } = ctx;
   const S = { party: null, fr: null, search: null, frTimer: null, soTimer: null, busy: false, matched: false };
   const meId = () => (online.player ? online.player.id : null);
   const rules = () => (save.settings.mode === 'nocoin' ? 'nocoin' : 'classic');
@@ -88,6 +88,7 @@ export function initSocial(ctx) {
 
   // -------------------------------------------------------------------------------------------------- playing
   async function onPlay() {
+    if (S.search && performance.now() - S.search.t0 > 120000) closeSearch(); // a stale search from an old server session
     if (S.busy || S.search) return;
     if (followsLeader()) { toast('Waiting for the party leader'); return; }
     const m = modeById(save.playMode);
@@ -107,7 +108,7 @@ export function initSocial(ctx) {
     } catch (e) {
       S.busy = false; renderModeCard();
       toast(String(e.message || e));
-      if (!tainted()) { const go = await dialog({ title: 'SERVER UNREACHABLE', message: 'Online modes need a connection. Play an offline run instead?', yes: 'PLAY OFFLINE', no: 'CLOSE' }); if (go) { save.settings.mode = rules(); persist(); startOffline(); } }
+      { const go = await dialog({ title: 'SERVER UNREACHABLE', message: 'Online modes need a connection. Play an offline run instead?', yes: 'PLAY OFFLINE', no: 'CLOSE' }); if (go) { save.settings.mode = rules(); persist(); startOffline(); } }
     }
   }
 
@@ -119,7 +120,9 @@ export function initSocial(ctx) {
     show('searchOv', true); renderSearch(); renderModeCard();
     S.soTimer = setInterval(() => { const el = document.querySelector('.so-ring span'); if (el && S.search && S.search.phase === 0) { el.textContent = mmss((performance.now() - S.search.t0) / 1000); if (performance.now() - S.search.t0 > 15000) $('soOffline').style.display = ''; } }, 250);
   }
-  function closeSearch() { S.search = null; S.busy = false; clearInterval(S.soTimer); show('searchOv', false); renderModeCard(); }
+  function closeSearch() { S.search = null; S.busy = false; S.matched = false; clearInterval(S.soTimer); clearTimeout(S.matchT); show('searchOv', false); renderModeCard(); }
+  // Called when a race starts/results or the player returns to the lobby: a match must never leave PLAY stuck on SEARCHING.
+  function resetSearch() { closeSearch(); }
   function renderSearch() {
     const s = S.search; if (!s) return;
     const m = s.spec ? modeFromSpec(s.spec) : current();
@@ -332,11 +335,12 @@ export function initSocial(ctx) {
     if (S.search) { S.search.phase = 2; S.search.note = 'GO!'; renderSearch(); const n = $('soNote'); if (n) n.classList.add('found'); }
     setTimeout(closeSearch, 450);
   });
+  also('results', () => resetSearch()); // results can arrive after a reconnect: release the button anyway
   also('authed', () => { renderParty(); loadFriends(); loadConvs(); });
   let retry = 0;
   also('close', () => {
     S.party = null; if (S.search) closeSearch(); renderParty(); renderModeCard();
-    if (!online.player || tainted()) return;
+    if (!online.player) return;
     const wait = Math.min(30000, 3000 * 2 ** retry++); // reconnect with back-off (server restart, sleeping host, wifi)
     setTimeout(() => { if (!net.connected && !ctx.inRace()) ensureOnline().then(() => { retry = 0; }).catch(() => {}); }, wait);
   });
@@ -357,7 +361,7 @@ export function initSocial(ctx) {
   if (!save.playMode) save.playMode = 'solo-classic'; // a new player can always start at once; online modes are one pick away
   renderModeCard(); renderParty();
   return {
-    onPlay, openFriends, renderModeCard, renderParty,
+    onPlay, openFriends, renderModeCard, renderParty, resetSearch,
     get party() { return S.party; },
     refresh() { renderParty(); renderModeCard(); },
   };

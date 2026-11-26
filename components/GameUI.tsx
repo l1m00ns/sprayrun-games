@@ -152,7 +152,7 @@ export default function GameUI() {
           <div id="setBody"></div>
           <p className="sec-hint" id="setVer"></p>
           <p className="legal-row"><a href="/terms" target="_blank" rel="noopener">Terms of Service</a> · <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a> &nbsp; <button className="linkbtn" id="btnExport">Download my data</button> · <button className="linkbtn danger" id="btnDeleteAcct">Delete my account</button></p>
-          <div className="row"><button className="btn purple sm hidden" id="btnSecret">SECRET MENU</button><button className="btn red sm" id="btnReset">RESET PROGRESS</button><button className="btn" id="btnSetClose">BACK</button></div></div></div>
+          <div className="row"><button className="btn red sm" id="btnReset">RESET PROGRESS</button><button className="btn" id="btnSetClose">BACK</button></div></div></div>
 
         <div id="dlg" className="screen modal hidden" role="dialog" aria-modal="true"><div className="panel dlg-panel">
           <h2 className="ink" id="dlgTitle">CONFIRM</h2>
@@ -161,12 +161,6 @@ export default function GameUI() {
           <div className="err" id="dlgErr"></div>
           <div className="row"><button className="btn" id="dlgNo">CANCEL</button><button className="btn go" id="dlgYes">OK</button></div></div></div>
 
-        <div id="secret" className="screen modal hidden"><div className="panel" style={{ width: 'min(96vw,860px)' }}><h2 className="ink">SPRAY SECRET MENU</h2>
-          <p className="stage-note" id="secNote"></p>
-          <input id="secSearch" className="sec-search" type="search" placeholder="Search options" autoComplete="off" spellCheck={false} />
-          <div className="tabs" id="secTabs"></div>
-          <div id="secBody"></div>
-          <div className="row"><button className="btn sm" id="secReset">RESET ALL</button><button className="btn sm green hidden" id="secUnload">UNLOAD - PLAY ONLINE</button><span className="sec-hint"><kbd>²</kbd> open / close &nbsp; <kbd>Esc</kbd> close</span><button className="btn go" id="secClose">CLOSE</button></div></div></div>
         <div id="modePick" className="screen modal hidden"><div className="panel mp-panel" style={{ width: 'min(96vw,900px)' }}><h2 className="ink">GAME MODE</h2><div id="mpCats"></div><div id="mpBody"></div><div className="row mp-close-row"><button className="btn go" id="mpClose">CLOSE</button></div></div></div>
         <div id="friends" className="screen modal hidden"><div className="panel" style={{ width: 'min(94vw,680px)' }}><h2 className="ink">FRIENDS</h2><div id="frBody"></div><div className="row"><button className="btn go" id="frClose">CLOSE</button></div></div></div>
         <div id="searchOv" className="screen modal hidden"><div className="panel" style={{ width: 'min(92vw,520px)' }}><div id="soBody"></div><div className="row"><button className="btn red" id="soCancel">CANCEL</button><button className="btn sm" id="soOffline" style={{ display: 'none' }}>PLAY OFFLINE INSTEAD</button></div></div></div>

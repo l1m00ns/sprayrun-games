@@ -18,7 +18,7 @@ import { fillIcons } from './iconsax.js';
 import { createDuel } from './duel.js';
 import { setLang, getLang, detectLang, flagUrl, t } from './i18n.js';
 import { createOnboarding, openLanguagePicker } from './onboarding.js';
-import { cheats, GROUPS as CHEAT_GROUPS, tainted, activeCount, groupActive, konamiListener, renderGroup as renderCheatGroup, unlocked as secretUnlocked, setUnlocked as setSecretUnlocked, resetAll as resetCheats } from './secret.js';
+import { cheats } from './tuning.js';
 import { SCHEMA as SETTINGS, defaults as settingDefaults, renderTab as renderSettingsTab } from './settings.js';
 import { Sky, themeAt } from './sky.js';
 import { World, initWorldAssets, setNight, tickWorldAssets } from './world.js';
@@ -441,7 +441,8 @@ function startRun(opts = {}) {
   resetRun();
   run.revives = 0; run.chestBoards = 0;
   run.boostT = 0; run.boostMul = 1; run.noCoinsT = 0; run.duelCount = 0; run.deathSaved = false; P.secondLife = false;
-  run.cheated = tainted() || !!opts.ltm || !!opts.explore;
+  run.cheated = !!opts.ltm || !!opts.explore; // online races are never "practice": the server scores them
+  world.staticTrains = !!mp.active; // every player must see the same moving obstacles at the same distance
   run.fun = opts.fun || null; run.explore = !!opts.explore; run.nudge = 0; run.nudgeT = 0;
   run.event = opts.event || null; run.night = run.event === 'neon'; run.neonMagnet = false;
   if (run.event === 'neon') mapOverride = 'neon'; // the event owns the map and the time of day, not the saved preference
@@ -451,8 +452,8 @@ function startRun(opts = {}) {
   funA = 0; bend.uSway.value.set(0, 0.028, 0, 7); bend.uHill.value.set(0, 0.02, 0); funSlope = 0; // a fresh run starts with a straight track
 
   run.ltm = opts.ltm || null; run.warpAt = 20 + Math.random() * 32; run.warping = false;
-  $('h-cheat').classList.toggle('hidden', !(run.cheated || (cheats.bot && cheats.botTag)));
-  $('h-cheat').textContent = opts.explore ? 'EXPLORE - nothing is saved' : opts.ltm ? 'GOLD RUSH - the track will warp into the arena...' : cheats.bot && cheats.botTag ? 'BOT DRIVING - PRACTICE' : 'PRACTICE RUN - SECRET MENU ACTIVE';
+  $('h-cheat').classList.toggle('hidden', !run.cheated);
+  $('h-cheat').textContent = opts.explore ? 'EXPLORE - nothing is saved' : 'GOLD RUSH - the track will warp into the arena...';
   hubUI.setBarVisible(false);
   run.mode = opts.mode || save.settings.mode || 'classic';
   world.setNoCoin(run.mode === 'nocoin');
@@ -640,8 +641,10 @@ function stumble(hit) {
 
 function breakBoard(hit) {
   // the board takes the hit AND the obstacle is cleared: otherwise the runner would ride through the inside of a train for 2.4 s
-  if (hit && hit.solid) world.removeSolid(hit.solid);
-  world.clearLane(P.x, 30);
+  if (!mp.active) { // online, removing a train locally would desync your spectator and the other runners
+    if (hit && hit.solid) world.removeSolid(hit.solid);
+    world.clearLane(P.x, 30);
+  }
   P.onBoard = false; P.boardT = 0; P.inv = 2.4; P.bump = 0.6;
   shake = Math.max(shake, 0.6); flash = 1;
   audio.sfx.boardBreak();
@@ -1334,20 +1337,6 @@ function setupUI() {
   };
   $('btnSettings').onclick = () => { audio.initAudio(); audio.sfx.click(); drawSettings(); show('settings', true); };
   $('btnSetClose').onclick = () => { audio.sfx.click(); show('settings', false); persist(); };
-  $('btnSecret').classList.toggle('hidden', !secretUnlocked());
-  $('btnSecret').onclick = () => { audio.sfx.click(); show('settings', false); drawSecret(); show('secret', true); };
-  $('secClose').onclick = closeSecret;
-  $('secUnload').onclick = () => { audio.sfx.click(); unloadCheats(); };
-  window.addEventListener('keydown', (e) => {
-    if (e.repeat) return;
-    if (e.key === 'Escape' && !$('secret').classList.contains('hidden')) { e.preventDefault(); e.stopPropagation(); closeSecret(); return; }
-    if (e.key !== '²' && e.code !== 'Backquote') return;
-    const t = e.target, tag = t && t.tagName;
-    if (tag === 'TEXTAREA' || (tag === 'INPUT' && !['checkbox', 'range'].includes(t.type) && t.id !== 'secSearch')) return;
-    e.preventDefault(); toggleSecret();
-  }, true);
-  $('secReset').onclick = () => { audio.sfx.click(); resetCheats(); applyCheatVisuals(); drawSecret(); };
-  konamiListener(() => { const tg = document.activeElement && document.activeElement.tagName; if (tg === 'INPUT' || tg === 'TEXTAREA') return; openSecret(true); });
   $('btnExport').onclick = async () => {
     if (!online.token) { toast('Sign in first'); return; }
     const r = await api.call('GET', '/api/me/export');
@@ -1647,7 +1636,6 @@ function setupOnline() {
   }
 
   async function connectOnline() {
-    if (tainted()) throw new Error('Secret Menu options are active - turn them off to play online');
     const name = ($('lobName').value || 'Runner').trim().slice(0, 14);
     save.mpName = name; persist();
     $('lobErr').textContent = 'Connecting...';
@@ -1664,14 +1652,13 @@ function setupOnline() {
   queueDuelRef = async () => { await connectOnline(); net.send({ t: 'dq', char: CHARACTERS[charIndex].id }); };
   // Online without the lobby form: the account name comes from the save (guests get one on the fly).
   async function ensureOnline() {
-    if (tainted()) throw new Error('Secret Menu options are active - turn them off to play online');
     const name = save.mpName || (online.player && !online.player.guest ? online.player.name : null);
     const p = await api.ensureAccount(name);
     if (!p) throw new Error('Could not reach the server');
     await connectNet();
   }
   ensureOnlineRef = ensureOnline;
-  social = initSocial({ maps: () => Object.values(BIOMES).map((b) => ({ id: b.id, name: b.name })), setMap: (id) => { save.settings.map = id; persist(); enterMenu(); }, inRace: () => mp.active, $, api, net, online, save, persist, audio, dialog, toast, show, CHARACTERS, charId: () => CHARACTERS[charIndex].id, ensureOnline, startDuel, startNeon, startOffline: (o) => tryPlay(o || {}), tainted });
+  social = initSocial({ maps: () => Object.values(BIOMES).map((b) => ({ id: b.id, name: b.name })), setMap: (id) => { save.settings.map = id; persist(); enterMenu(); }, inRace: () => mp.active, $, api, net, online, save, persist, audio, dialog, toast, show, CHARACTERS, charId: () => CHARACTERS[charIndex].id, ensureOnline, startDuel, startNeon, startOffline: (o) => tryPlay(o || {}) });
   $('btnOnline').onclick = async () => {
     audio.initAudio(); audio.sfx.click();
     $('lobName').value = save.mpName || CHARACTERS[charIndex].name;
@@ -1769,6 +1756,7 @@ function setupOnline() {
   net.on('dead', (m) => { const p = mp.players.get(m.id); if (p) { p.alive = false; p.d = m.d; p.s = m.s; } });
   net.on('left', (m) => { mp.players.delete(m.id); dropGhost(m.id); });
   net.on('results', (m) => {
+    if (social) social.resetSearch();
     stopSpectate();
     mp.results = m.ranking;
     trackEvent('match_end', { map: mp.room && mp.room.map, mode: mp.room && mp.room.mode, meta: { ranked: !!m.ranked, teams: !!m.teamMode, place: m.ranking.findIndex((r) => r.id === net.id) + 1, players: m.ranking.length, winner: m.winner ?? null } });
@@ -1893,7 +1881,7 @@ async function bootOnline() {
   hubUI.checkUpdates();
   const p = online.player;
   if (p && (p.banned || p.kickedUntil)) showSanction({ error: p.banned ? 'banned' : 'kicked', reason: p.banReason || 'Fair-play violation', until: p.kickedUntil });
-  else if (p && ensureOnlineRef && !tainted()) ensureOnlineRef().catch(() => { /* the socket reconnects on its own */ }); // friends, invites and presence need the live connection
+  else if (p && ensureOnlineRef) ensureOnlineRef().catch(() => { /* the socket reconnects on its own */ }); // friends, invites and presence need the live connection
   return true;
 }
 async function onSignedIn(importedCoins) {
@@ -1907,78 +1895,6 @@ async function renameFlow() {
   await api.ensureAccount(n);
   if (online.player) { const r = await api.rename(n.trim().slice(0, 14)); if (r && r.status !== 200) notify('NAME NOT ALLOWED', (r.json && r.json.message) || 'Pick another name.'); }
   renderProfile(); renderMenuChrome();
-}
-// ---------------------------------------------------------------- Spray Secret Menu
-let secGroup = 'Player';
-function applyCheatVisuals() {
-  const f = [];
-  if (cheats.grayscale) f.push('grayscale(1)');
-  if (cheats.sepia) f.push('sepia(1)');
-  if (cheats.invert) f.push('invert(1)');
-  if (cheats.vivid) f.push('saturate(1.7) contrast(1.1)');
-  if (cheats.disco) f.push(`hue-rotate(${Math.floor((time * 70) % 360)}deg)`);
-  canvas.style.filter = f.join(' ');
-  canvas.style.transform = [cheats.mirror ? 'scaleX(-1)' : '', cheats.upsideDown ? 'rotate(180deg)' : ''].filter(Boolean).join(' ');
-  canvas.style.imageRendering = cheats.retro ? 'pixelated' : '';
-  const want = cheats.retro ? 0.22 : 1;
-  if (applyCheatVisuals.rs !== want) { applyCheatVisuals.rs = want; pixelExtra = want; applyPixelRatio(); }
-  scene.overrideMaterial = cheats.wireframe ? (applyCheatVisuals.wire ||= new THREE.MeshBasicMaterial({ color: 0x66ffcc, wireframe: true })) : null;
-  $('hud').classList.toggle('nohud', !!cheats.hideHud);
-  $('h-cheat').classList.toggle('hidden', !(run.cheated || (cheats.bot && cheats.botTag)) || state === 'menu');
-  $('dbgPanel').classList.toggle('hidden', !cheats.debug);
-}
-let secQuery = '', secPaused = false;
-function drawSecret() {
-  $('secTabs').innerHTML = CHEAT_GROUPS.map((g) => { const n = groupActive(g); return `<button class="tab${g === secGroup && !secQuery ? ' sel' : ''}" data-g="${g}">${g.toUpperCase()}${n ? `<b class="tabn">${n}</b>` : ''}</button>`; }).join('');
-  for (const b of $('secTabs').querySelectorAll('.tab')) b.onclick = () => { audio.sfx.click(); secGroup = b.dataset.g; secQuery = ''; $('secSearch').value = ''; drawSecret(); };
-  $('secSearch').oninput = () => { secQuery = $('secSearch').value; drawSecret(); };
-  renderCheatGroup($('secBody'), secGroup, () => { applyCheatVisuals(); updateSecretNote(); drawSecretTabs(); }, onCheatButton, secQuery);
-  updateSecretNote();
-}
-function drawSecretTabs() { for (const b of $('secTabs').querySelectorAll('.tab')) { const n = groupActive(b.dataset.g); let t = b.querySelector('.tabn'); if (n && !t) { t = document.createElement('b'); t.className = 'tabn'; b.appendChild(t); } if (t) { if (n) t.textContent = n; else t.remove(); } } }
-function updateSecretNote() {
-  const n = activeCount(), practice = tainted();
-  $('secUnload').classList.toggle('hidden', !practice && !n); // visible as soon as anything is on: one click and online play is back
-  $('secReset').textContent = n ? `RESET ALL (${n} ON)` : 'RESET ALL';
-  $('secNote').className = `stage-note${practice ? ' warn' : ''}`;
-  $('secNote').textContent = practice ? 'Practice session: nothing you do now is banked, submitted or ranked, and online play is blocked.' : 'Visual options are free. Any option that changes gameplay turns the run into a practice run: nothing banked, submitted or ranked.';
-}
-// ² (the key left of 1 on AZERTY; the backtick key elsewhere) opens and closes the menu once it is unlocked, even in a run (it pauses).
-function toggleSecret() {
-  if (!secretUnlocked() || dlgOpen || state === 'loading' || state === 'duel') return;
-  if (!$('secret').classList.contains('hidden')) { closeSecret(); return; }
-  if (!$('onboard').classList.contains('hidden')) return;
-  if (state === 'playing') { pause(); secPaused = state === 'paused'; }
-  audio.sfx.click(); drawSecret(); show('secret', true); $('secSearch').value = secQuery;
-}
-function closeSecret() { audio.sfx.click(); show('secret', false); applyCheatVisuals(); if (secPaused) { secPaused = false; if (state === 'paused') toast('Paused - press P or tap Resume'); } canvas.focus(); }
-// Turns every option off (bot included) so the session is no longer a practice session: online play and ranked work again.
-function unloadCheats() {
-  const inRun = state === 'playing' || (state === 'paused' && secPaused) || state === 'dying';
-  resetCheats(); botOn = false; applyCheatVisuals(); drawSecret();
-  $('h-cheat').classList.toggle('hidden', !(run.cheated && inRun));
-  toast(inRun ? 'Unloaded - this run stays practice, start a new one to play online' : 'Unloaded - online play and ranked are available again');
-}
-function onCheatButton(id) {
-  audio.sfx.click();
-  if (id === 'unload') { unloadCheats(); return; }
-  if (id === 'resetAll') { resetCheats(); applyCheatVisuals(); drawSecret(); return; }
-  if (id === 'lockMenu') { setSecretUnlocked(false); show('secret', false); $('btnSecret').classList.add('hidden'); return; }
-  if (state !== 'playing' && !(state === 'paused' && secPaused)) { notify('START A RUN FIRST', 'This button acts on a run in progress. Press PLAY, then open this menu with ² (the game pauses).'); return; }
-  run.cheated = true; $('h-cheat').classList.remove('hidden');
-  if (id === 'actJet') activatePower('jetpack');
-  else if (id === 'actMagnet') activatePower('magnet');
-  else if (id === 'actBoard') { P.onBoard = true; P.boardT = cheats.boardTime; updateHudStatic(); }
-  else if (id === 'instantDie') { show('secret', false); die('manual'); }
-}
-function openSecret(first) {
-  if (dlgOpen || state === 'playing' || state === 'loading') return;
-  if (!secretUnlocked()) {
-    setSecretUnlocked(true); $('btnSecret').classList.remove('hidden');
-    notify('SECRET MENU UNLOCKED', 'Welcome to the Spray Secret Menu: 65+ options to play with. Press ² (the key left of 1) anywhere to open or close it, even during a run. Anything that changes gameplay makes the run a practice run - nothing is banked, submitted or ranked.');
-    return;
-  }
-  drawSecret(); show('secret', true);
 }
 // ---------------------------------------------------------------- VPN / device / appeals
 let vpnShown = 0;
@@ -2018,7 +1934,7 @@ async function startDuel() {
   if (state !== 'menu') return;
   audio.initAudio(); audio.resumeAudio();
   const p = online.player;
-  if (p && online.token && !tainted() && !p.banned && !p.kickedUntil) {
+  if (p && online.token && !p.banned && !p.kickedUntil) {
     try {
       if (await api.health()) { hubUI.setBarVisible(false); $('lobName').value = save.mpName || CHARACTERS[charIndex].name; $('lobErr').textContent = ''; show('lobby', true); await queueDuelRef(); return; }
     } catch (e) { show('lobby', false); hubUI.setBarVisible(true); toast(String(e.message || e)); return; }
@@ -2112,7 +2028,7 @@ function renderProfile() {
 let showLobbyViewRef = () => {};
 
 async function submitRun() {
-  if (run.cheated) { $('oOnline').textContent = 'Practice run (Secret Menu options active) - nothing was banked or submitted'; return; }
+  if (run.cheated) { $('oOnline').textContent = run.explore ? 'Explore session - nothing was banked or submitted' : 'Gold Rush session - the race is not banked or submitted'; return; }
   if (online.submitted || !online.ticket || mp.active) { $('oOnline').textContent = online.token ? '' : 'Offline - score not submitted'; return; }
   online.submitted = true;
   $('oOnline').textContent = 'Submitting score...';
@@ -2150,6 +2066,7 @@ function renderLobby() {
 
 function mpToLobby() {
   mp.active = false; mp.running = false; mp.results = null;
+  if (social) social.resetSearch();
   stopSpectate();
   clearGhosts();
   enterMenu();
@@ -2159,6 +2076,7 @@ function mpToLobby() {
 
 function leaveRoom(fromClose = false) {
   if (!fromClose) net.send({ t: 'leave' });
+  if (social) social.resetSearch();
   stopSpectate();
   mp.active = false; mp.running = false; mp.counting = false; mp.room = null; mp.players.clear(); mp.results = null;
   clearGhosts();
@@ -2172,6 +2090,7 @@ function startMpRace(m) {
   trackEvent('match_start', { map: m.map, mode: m.mode, quality: save.settings.quality, meta: { ranked: !!m.ranked, size: m.size || 0, teams: !!m.teamMode, players: (m.players || []).length } });
   stopSpectate();
   mp.active = true; mp.running = false; mp.counting = true; mp.results = null; mp.seed = m.seed;
+  if (social) setTimeout(() => social.resetSearch(), 700); // let the launch phase show, then clear any stale search state
   for (const p of mp.players.values()) { p.d = 0; p.s = 0; p.alive = true; p.seen = false; p.ready = false; }
   clearGhosts();
   mapOverride = m.map;
@@ -2189,7 +2108,7 @@ function startMpRace(m) {
       mp.counting = false; mp.running = true;
       run.daily = false;
       run.ranked = !!m.ranked;
-      startRun({ seed: m.seed, mode: m.mode || 'classic' });
+      startRun({ seed: m.seed, mode: m.mode || 'classic', event: m.ltm === 'neon' ? 'neon' : null, ltm: m.ltm === 'goldrush' ? 'goldrush' : null });
       mp.sendT = 0;
       show('hud', true);
       setTimeout(() => { box.innerHTML = ''; }, 900);
@@ -2258,15 +2177,19 @@ function updateTutorial(dt) {
 const camLook = new THREE.Vector3();
 const camPos = new THREE.Vector3();
 let camX = 0, camY = 4.8, fov = 60, camRoll = 0;
-let camYs = 3.5, camZs = 6.1, camKick = 0, camLookX = 0;
+let camYs = 3.8, camZs = 6.1, camKick = 0, camLookX = 0;
 function updateCamera(dt) {
-  if (mp.spectate && mp.active) { // spectator: a chase camera behind the current leader's ghost
+  if (mp.spectate && mp.active) { // spectator: the same chase rig as a normal run, following the current leader's ghost
     const lead = mp.players.get(mp.camId) || [...mp.players.values()].find((p) => p.alive && p.id !== net.id);
     if (lead) {
-      const z = -(lead.d - run.dist);
-      camX = damp(camX, lead.x || 0, 8, dt); camYs = damp(camYs, 4.2, 8, dt); camZs = damp(camZs, 7.4, 5, dt); camLookX = damp(camLookX, lead.x || 0, 9, dt);
+      const z = -(lead.d - run.dist); // the leader in this client's track space
+      const lx = lead.x || 0, ly = Math.max(0, lead.y || 0);
+      camX = damp(camX, lx * 0.6, 9, dt);
+      camYs = damp(camYs, 3.55 + ly + (lead.sp > 22 ? 0.18 : 0), 8, dt);
+      camZs = damp(camZs, 5.85, 7, dt);
+      camLookX = damp(camLookX, lx * 0.76, 10, dt);
       camera.position.set(camX, camYs, camZs);
-      camLook.set(camLookX, 1.15, z - 7);
+      camLook.set(camLookX, 1.2 + ly, z - 11.2);
       camera.lookAt(camLook);
       camera.fov = 58; camera.updateProjectionMatrix();
       return;
@@ -2278,7 +2201,7 @@ function updateCamera(dt) {
   const speedK = clamp((run.speed - C.SPEED_START) / (C.SPEED_MAX - C.SPEED_START), 0, 1.6);
   const lead = clamp(P.vx, -24, 24) * 0.04; // look where we are going
   const rx = P.x * 0.6 + lead;
-  const ry = (3.05 + base * 0.72 + air * 0.5 + (P.y - base) * 0.08 - camKick) * cheats.camHeight;
+  const ry = (3.35 + base * 0.72 + air * 0.5 + (P.y - base) * 0.08 - camKick) * cheats.camHeight;
   const rz = (5.45 + Math.min(speedK, 1.4) * 0.75 + air * 0.25) * camDist() * cheats.camBack;
   const lx = P.x * 0.76 + lead * 1.7, ly = 1.12 + base * 0.78 + air * 0.8 + (P.y - base) * 0.12, lz = -11.2;
   camX = damp(camX, rx, 10, dt);
@@ -2444,8 +2367,7 @@ function frame(now) {
   updateGhosts(dt);
   updateMpHud(dt);
   updateCamera(dt);
-  if (cheats.disco || cheats.debug) applyCheatVisuals();
-  if (cheats.debug) $('dbgPanel').textContent = `speed ${run.speed.toFixed(1)}  dist ${Math.floor(run.dist)}  lane ${P.target}  y ${P.y.toFixed(2)}  seed ${run.seed}  t ${run.t.toFixed(1)}  cheated ${!!run.cheated}`;
+
   audio.setWind(state === 'playing' ? clamp((run.speed - 10) / 28, 0, 1) : 0);
 
   const hi = presetOf(save.settings.quality).post;
@@ -2495,7 +2417,7 @@ function updatePlayerVisual(dt) {
   const introSpray = !!run.introOn && run.t < SPRAY_T && state === 'playing';
   ch.root.rotation.y = lerp(ch.root.rotation.y, introSpray ? Math.PI / 2 : -Math.atan(funSlope) * 0.9, 1 - Math.exp(-(introSpray ? 14 : 8) * dt)); // follows the path when the track snakes // faces the wall, then forward
   ch.can.visible = introSpray;
-  ch.root.visible = !cheats.hideRunner;
+  ch.root.visible = !mp.spectate && !cheats.hideRunner;
   ch.root.scale.setScalar(cheats.runnerSize);
   if (ch.rig && ch.rig.head) ch.rig.head.scale.setScalar(cheats.bigHead);
   let st = 'run';
@@ -2560,7 +2482,7 @@ const missionsKey = () => 'm';
 
 // debug / test hooks
 window.__game = {
-  api, cheats, applyCheatVisuals, get onboarding() { return onboarding; }, setLang, getLang, get duelCtl() { return duelCtl; }, enterArena, startSoloDuelRun, startDuel, showDuelResult, get hub() { return hubUI; }, get dlgOpen() { return dlgOpen; },
+  api, cheats, get onboarding() { return onboarding; }, setLang, getLang, get duelCtl() { return duelCtl; }, enterArena, startSoloDuelRun, startDuel, showDuelResult, get hub() { return hubUI; }, get dlgOpen() { return dlgOpen; },
   get state() { return state; },
   P, run, pw, G,
   get world() { return world; },

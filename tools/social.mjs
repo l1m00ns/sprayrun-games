@@ -193,6 +193,32 @@ try {
   await sleep(200); solo.ws.send({ t: 'p_play' }); solo2.ws.send({ t: 'p_play' });
   const mf = await solo.ws.wait('match', 15000);
   ok('Normal Solo: two players are matched in a free-for-all', !mf.ranked && mf.players.length === 2 && !mf.teams);
+
+  // ------------------------------------------- queue again after a finished match (PLAY used to do nothing)
+  const rae = await user('Rae'), sol = await user('Sol');
+  await connect(rae); await connect(sol);
+  for (const u of [rae, sol]) { u.ws.send({ t: 'p_spec', spec: { kind: 'ranked', size: 1, mode: 'classic' } }); }
+  await sleep(200); rae.ws.send({ t: 'p_play' }); sol.ws.send({ t: 'p_play' });
+  const rm1 = await rae.ws.wait('match', 15000);
+  ok('Ranked Solo queues and starts', rm1.ranked && rm1.players.length === 2);
+  await rae.ws.wait('start', 8000); await sleep(3200);
+  rae.ws.send({ t: 'dead', d: 20, s: 20 }); sol.ws.send({ t: 'dead', d: 10, s: 10 });
+  await rae.ws.wait('results', 8000);
+  for (const u of [rae, sol]) u.ws.clear();
+  for (const u of [rae, sol]) { u.ws.send({ t: 'p_spec', spec: { kind: 'ranked', size: 1, mode: 'classic' } }); }
+  await sleep(200); rae.ws.send({ t: 'p_play' }); sol.ws.send({ t: 'p_play' });
+  const rm2 = await rae.ws.wait('match', 15000).catch(() => null);
+  ok('PLAY works again after a finished ranked match', !!rm2 && rm2.ranked && rm2.players.length === 2);
+
+  // --------------------------------------------------------------- Neon Rush online (LTM queue, neon map, event)
+  const nea = await user('Nea'), neo = await user('Neo');
+  await connect(nea); await connect(neo);
+  for (const u of [nea, neo]) u.ws.send({ t: 'p_spec', spec: { kind: 'normal', size: 1, mode: 'classic', event: 'neon' } });
+  await sleep(200); nea.ws.send({ t: 'p_play' }); neo.ws.send({ t: 'p_play' });
+  const mn = await nea.ws.wait('match', 15000);
+  ok('Neon Rush is playable online', mn.map === 'neon' && mn.ltm === 'neon' && mn.players.length === 2);
+  const sn = await nea.ws.wait('start', 8000);
+  ok('the Neon Rush event reaches every runner', sn.ltm === 'neon' && sn.map === 'neon');
   // disconnecting while queued cancels the group
   const p1 = await user('Pia'), p2 = await user('Quin');
   await connect(p1); await connect(p2);

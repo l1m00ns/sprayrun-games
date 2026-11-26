@@ -11,7 +11,7 @@ npm run dev:all          # backend (http://localhost:4000) + web (http://localho
 npm run build && npm start   # production : UI + API + temps réel sur le même port (3000)
 npm run dev              # tout-en-un en développement (HMR)
 ```
-Base SQLite dans `data/` (`DATA_DIR`). Node ≥ 22.13. Le client parle à son propre serveur par défaut. **Backend ailleurs (Render, Railway…)** : `NEXT_PUBLIC_BACKEND_URL=https://ton-service.onrender.com` dans le `.env` du front (figé au `npm run build`), ou `public/config.js` pour changer sans reconstruire ; côté backend `CORS_ORIGIN=https://ton-front` et `TRUST_PROXY=1`. La version s’affiche dans Paramètres (`2.0.0-<commit>`).
+Base SQLite dans `data/` (`DATA_DIR`). Node ≥ 22.13. Le client parle à son propre serveur par défaut. **Backend ailleurs (Render, Railway…)** : `NEXT_PUBLIC_BACKEND_URL=https://ton-service.onrender.com` dans le `.env` du front (figé au `npm run build`), ou `public/config.js` pour changer sans reconstruire ; côté backend `CORS_ORIGIN=https://ton-front` et `TRUST_PROXY=1`. La version s’affiche dans Paramètres (`2.0.1-<commit>`).
 
 ## Jeu
 - **5 cartes + World Tour**, météo, jour/nuit, scènes animées, **graffitis**, animation de départ. **Palm Bay** refaite : mer animée (reflets, écume), ponton, bar tiki, filet de volley, serviettes, pirogue, bouées, palmiers penchés.
@@ -19,10 +19,16 @@ Base SQLite dans `data/` (`DATA_DIR`). Node ≥ 22.13. Le client parle à son pr
 - **Rio** (héros original : casquette, doudoune) + 12 coureurs, tenues, planches et traînées (boutique).
 - **Vitesse progressive** : la rampe authentique (110→220) continue ensuite vers ×1,4 ; **commandes « snappy »** (changement de voie 0,13 s, entrées appliquées instantanément) ou « classiques » (0,27 s).
 - **Neon Rush** (événement limité) : la ville passe de nuit, les rails s'allument et les pièces brillent en magenta. **Double Score offert au départ**, **aimant à 400 m**, gemmes néon et HUD dédié. Jouable hors ligne depuis la carte de mode ou le bouton NEON RUSH ; rien à télécharger, aucun duel.
-- **Menu secret Spray** (code Konami, puis touche **²** pour l’ouvrir/fermer partout, même en course) : recherche, compteurs par onglet, bouton **UNLOAD** (tout désactiver pour rejouer en ligne), 68 options (joueur, pouvoirs, vitesse, bot pro, monde, look, caméra, duel, outils). Toute option qui change le gameplay rend la session « entraînement » : rien n'est enregistré, envoyé ni classé, le jeu en ligne est bloqué. Bot pro à planificateur (survit 10/10 parties de 100 s sans invincibilité).
 - **Quatre saisons** (horloge UTC identique pour tous) : **Egg Hunt** (20 mars → 20 avril), **Haunted Rails** (1er oct. → 2 nov.), **Winter Fest** (1er déc. → 6 janv.) et **calendrier de l'avent** de 25 portes. Chaque événement a ses cosmétiques limités et un **cadeau gratuit** à réclamer une fois par compte.
 - **Langues** : bouton 🌐 + écran d'accueil à la première visite (langue, apparence, commandes/caméra, fair-play & vie privée, compte). Anglais et français (traduction en direct de toute l'interface ; ajouter une langue = un dictionnaire dans `src/i18n.js`).
 - **Interface** : barre supérieure (Jouer, Boutique, Carrière, Classement, Événements, Mises à jour, Support), profil, **statistiques** en graphiques, **paramètres** (≈35 options : graphismes, caméra, commandes, audio, accessibilité), aucune pop-up navigateur (dialogues natifs), scrollbars masquées.
+
+## 2.0.1 — spectateur, online, fair-play
+- **Spectateur** : caméra de poursuite derrière le leader, coureur mort masqué, et **mêmes obstacles pour tous** (les trains mobiles ne bougent plus en multijoueur et un crash ne supprime plus localement un wagon).
+- **Neon Rush en ligne** : même file, recherche, préparation et lancement que les autres modes ; l'événement et la carte néon sont transmis à tous les joueurs. Tous les modes multijoueur portent maintenant leur event.
+- **PLAY réparé** : après une course, chaque groupe repasse en `idle` côté serveur et l'overlay de recherche est nettoyé au lancement, aux résultats et en quittant un salon. Le bouton ne reste plus bloqué sur SEARCHING.
+- **Fair-play sans faux positif** : l'avis de l'IA et un flag mou ne peuvent plus sanctionner seuls. Seules les violations physiques impossibles (distance impossible, téléportation) disqualifient la course, et leur répétition peut terminer la session.
+- **Caméra** : hauteur par défaut légèrement relevée. **Menu secret supprimé entièrement** (bouton, Konami, touche ² et panneau).
 
 ## 2.0.0 — premium, saisons, HDRI
 - **Codes premium à la Roblox** : 100 codes à usage unique (`RS2-XXXX-XXXX`) donnent **tous les cosmétiques** du jeu et un badge **PREMIUM** à côté du pseudo (classements, profil, amis, groupe). Un code par compte, réservé aux comptes. La liste de livraison est dans `docs/CODES.md` (à garder privée pour un vrai giveaway).
@@ -61,7 +67,6 @@ node tools/duel-net.mjs     # serveur du duel : warp, tirs, triche, nul, badge, 
 node tools/security.mjs     # VPN, ranked, doubles comptes, contestations, stats (39)
 node tools/hub.mjs <dir>    # barre, boutique, avent, compte, support (21)
 node tools/welcome.mjs <dir># accueil, langues, ranked, contestation, stats (18)
-node tools/secret.mjs       # Konami, 67 options, isolation entraînement, bot pro (14)
 node tools/duel.mjs <dir>   # arène, Gold Eagle, bot, victoire/nul, warp solo (11)
 node tools/perf.mjs         # GPU, résolution adaptative, stats d’images (22)
 node tools/trains.mjs       # toits praticables, chocs, difficulté, bot pro sur le générateur dur
@@ -77,4 +82,4 @@ Le rendu de test est logiciel (SwiftShader) : lent, d'où des crashs forcés et 
 `"C:/Program Files/Blender Foundation/Blender 5.3/blender.exe" -b -P tools/blender/make_props.py -- public/models/props.glb`
 
 ## Structure
-`app/`, `components/` Next.js 16 + Tailwind 4 · `src/` moteur Three.js, hub, duel, i18n, menu secret · `server/` backend · `server.mjs` Next + API + WebSocket · `scripts/` dev:all, publication · `tools/` tests.
+`app/`, `components/` Next.js 16 + Tailwind 4 · `src/` moteur Three.js, hub, duel, i18n · `server/` backend · `server.mjs` Next + API + WebSocket · `scripts/` dev:all, publication · `tools/` tests.

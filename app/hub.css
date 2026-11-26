@@ -205,12 +205,9 @@
 .cb #h-warn i { background: #2f7fe8; } .cb #h-warn i.hot { background: #ffa21f; } .cb #h-warn i::before { content: "\25B2"; position: absolute; inset: 0; opacity: 0; }
 .reduce *, .reduce *::before, .reduce *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition-duration: .01s !important; }
 
-/* ---------- secret menu / practice badge */
+/* ---------- practice / event badge */
 #h-cheat { position: absolute; top: 74px; left: 50%; transform: translateX(-50%); padding: 3px 16px; border-radius: 99px; font-family: var(--font); font-size: 15px; letter-spacing: 1px; background: rgba(120,40,180,.85); border: 2px solid #d9a8ff; pointer-events: none !important; }
-#hud.nohud > :not(#h-cheat) { display: none !important; }
 #dbgPanel { position: fixed; left: 8px; top: 72px; z-index: 80; font: 700 12px/1.3 monospace; background: rgba(0,0,0,.65); color: #7bffb0; padding: 5px 9px; border-radius: 6px; pointer-events: none; }
-#secret .panel { max-height: 94vh; } #secBody { max-height: calc(94vh - 400px); min-height: 150px; overflow-y: auto; padding-right: 4px; }
-#secret .tabs .tab { font-size: 14px; padding: 6px 4px; }
 
 /* ---------- Gold Rush duel HUD */
 #duelhud { position: absolute; inset: 0; pointer-events: none; font-family: var(--font); color: #fff; }
@@ -269,14 +266,7 @@
 .chart { width: 100%; height: auto; display: block; } .chart text { fill: rgba(255,255,255,.7); font: 600 11px var(--body); } .chartbox { padding: 12px 14px; border-radius: 16px; background: rgba(255,255,255,.06); border: 2px solid var(--line); } .chartbox h4 { margin: 0 0 6px; font-family: var(--font); font-weight: 400; font-size: 18px; color: var(--yellow); }
 .progress { height: 12px; border-radius: 8px; background: rgba(255,255,255,.16); overflow: hidden; margin-top: 6px; } .progress i { display: block; height: 100%; background: linear-gradient(90deg, var(--green), #b6ff5a); }
 
-/* ---------- secret menu */
-.sec-search { width: 100%; margin: 4px 0 10px; padding: 10px 14px; border-radius: 12px; border: 2px solid var(--line); background: rgba(8,12,34,.6); color: #fff; font: 600 16px var(--body); outline: none; user-select: text; }
-.sec-search:focus { border-color: var(--yellow); }
-.sec-search::placeholder { color: rgba(255,255,255,.45); }
-#secret .tabs .tab { position: relative; }
 .tabn { display: inline-block; min-width: 18px; margin-left: 5px; padding: 0 5px; border-radius: 99px; background: var(--pink); color: #fff; font: 700 11px/17px var(--body); text-align: center; vertical-align: 1px; }
-.sec-g { margin-left: 8px; padding: 1px 8px; border-radius: 99px; background: rgba(255,255,255,.12); font: 600 11px/16px var(--body); font-style: normal; opacity: .8; }
-#secret .set-row.on { background: rgba(255,210,63,.09); box-shadow: inset 3px 0 0 var(--yellow); }
 .stage-note.warn { color: #ffb4c8; }
 .sec-hint { flex: 1; text-align: center; font: 600 13px var(--body); opacity: .7; }
 kbd { display: inline-block; min-width: 22px; padding: 1px 7px; border-radius: 7px; border: 1px solid rgba(255,255,255,.35); border-bottom-width: 3px; background: rgba(255,255,255,.1); font: 700 13px/1.4 var(--body); text-align: center; }

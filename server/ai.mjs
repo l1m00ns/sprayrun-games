@@ -146,8 +146,10 @@ const agree = (a, b) => a.verdict === b.verdict && (a.confidence !== 'low' || b.
 // Deterministic rules: used as tier 0, as the fallback, and as the guardrail on what the AI may cause.
 export function ruleJudge(ev) {
   const hard = (ev.flags || []).filter((f) => f.hard).length, soft = (ev.flags || []).length - hard;
-  if (hard >= 2) return { verdict: 'cheating', confidence: 'high', reasons: [`${hard} physically impossible values in one event.`], recommended_action: 'kick', summary: `${hard} hard rule violations`, hard, soft };
-  if (hard === 1) return { verdict: 'cheating', confidence: 'medium', reasons: ['A physically impossible value was reported.'], recommended_action: 'strike', summary: 'One hard rule violation', hard, soft };
+  // A hard value is a red flag, not a conviction: client bugs, lag and bad telemetry can produce one. Never punish
+  // automatically here; a human sees the evidence. This is the "no false positive" guarantee.
+  if (hard >= 2) return { verdict: 'cheating', confidence: 'high', reasons: [`${hard} independent physically impossible values.`], recommended_action: 'strike', summary: `${hard} hard rule violations`, hard, soft };
+  if (hard === 1) return { verdict: 'suspicious', confidence: 'low', reasons: ['One physically impossible value, possibly a client or network glitch.'], recommended_action: 'escalate_human', summary: 'One hard rule violation', hard, soft };
   if (soft >= 3) return { verdict: 'suspicious', confidence: 'medium', reasons: ['Several independent statistical anomalies.'], recommended_action: 'flag_run', summary: `${soft} soft anomalies`, hard, soft };
   if (soft >= 1) return { verdict: 'suspicious', confidence: 'low', reasons: ['A single statistical anomaly, possible with skilled or throttled play.'], recommended_action: 'monitor', summary: 'One soft anomaly', hard, soft };
   return { verdict: 'legit', confidence: 'medium', reasons: ['No anomaly.'], recommended_action: 'none', summary: 'Clean', hard, soft };

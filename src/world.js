@@ -526,6 +526,7 @@ export class World {
     this.t = 0;
     this.noCoin = false;
     this.noObstacles = false; // Explore mode: scenery only
+    this.staticTrains = false; // multiplayer: all moving trains stay put so every client sees identical obstacles
     this.genZ = 0; // world z of the segment being generated (coins and items live in player-relative space)
   }
 
@@ -623,8 +624,8 @@ export class World {
         if (o.vz) {
           const d = -(s.z + o.lz1 + o.off);
           if (o.headlight) o.headlight.material.opacity = o.started ? 0.55 + 0.45 * Math.sin(this.t * 16) : 0.22 + 0.2 * Math.sin(this.t * 5);
-          if (!o.started && d < (o.trigger || 38) && d > 0) { o.started = true; if (this.onTrainMove) this.onTrainMove(o, d); }
-          if (o.started) { o.off += o.vz * dt; o.obj.position.z = o.baseZ + o.off; }
+          if (!this.staticTrains && !o.started && d < (o.trigger || 38) && d > 0) { o.started = true; if (this.onTrainMove) this.onTrainMove(o, d); }
+          if (o.started && !this.staticTrains) { o.off += o.vz * dt; o.obj.position.z = o.baseZ + o.off; }
         }
         if (o.steam && this.onSmoke) {
           const wz = s.z + o.lz1 + (o.off || 0) - 0.8;
@@ -823,6 +824,7 @@ export class World {
     seg.addSolid({ kind: 'container', obj: m, x: C.LANES[lane], hw: 0.95, lz0: z - len, lz1: z, yMin: 0, yMax: C.TRAIN_H, walkable: C.ROOF_LAND, solidTop: !C.ROOF_LAND, lethal: true });
   }
   placeTrain(seg, lane, z, carriages, ramp, biome, vz = 0) {
+    if (this.staticTrains) vz = 0;
     const TRIGGER = 50;
     const x = C.LANES[lane];
     let zt = z;

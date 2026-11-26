@@ -1,4 +1,4 @@
-// Visual snapshots for review: loading screen, menu (hero close-up), tropic gameplay, HUD, secret menu opened with the key left of 1.
+// Visual snapshots for review: loading screen, menu (hero close-up), tropic gameplay, HUD.
 import { startServer, launch } from './lib.mjs';
 import puppeteer from 'puppeteer-core';
 import fs from 'node:fs';
@@ -7,7 +7,7 @@ fs.mkdirSync(OUT, { recursive: true });
 const srv = await startServer(4400 + Math.floor(Math.random() * 40), { AI_DISABLED: '1' });
 const browser = await launch(1280, 720);
 const page = await browser.newPage();
-await page.evaluateOnNewDocument(() => { try { localStorage.setItem('sprayrun.save.v1', JSON.stringify({ settings: { quality: 'high', music: 0, sfx: 0, lang: 'en', autoRes: false, weather: true }, onboarded: true })); localStorage.setItem('rs.secret.unlocked', '1'); } catch (e) { /* noop */ } });
+await page.evaluateOnNewDocument(() => { try { localStorage.setItem('sprayrun.save.v1', JSON.stringify({ settings: { quality: 'high', music: 0, sfx: 0, lang: 'en', autoRes: false, weather: true }, onboarded: true })); } catch (e) { /* noop */ } });
 await page.goto(srv.url, { waitUntil: 'load' });
 await page.waitForFunction(() => window.__game && window.__game.state === 'menu', { timeout: 180000 });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -18,8 +18,6 @@ await page.evaluate(() => document.getElementById('loading').classList.add('hidd
 await sleep(1500); await page.screenshot({ path: `${OUT}/menu.png` });
 await page.evaluate(() => { const g = window.__game; g.save.tutorialDone = true; g.setMap('tropic'); g.start(); });
 await sleep(7000); await page.screenshot({ path: `${OUT}/tropic.png` });
-await page.keyboard.press('Backquote'); await sleep(800); await page.screenshot({ path: `${OUT}/secret.png` });
-await page.keyboard.press('Backquote'); await sleep(400);
 await page.evaluate(() => { const g = window.__game; g.P.inv = 0; const w = g.world, seg = w.segs[0]; w.placeTrain(seg, g.P.target, -9 - seg.z, 2, false, 'tropic', 0); });
 await sleep(1200); await page.screenshot({ path: `${OUT}/crash.png` });
 console.log('done');

@@ -60,7 +60,7 @@ try {
   ok('career page: level, stats, achievements', /Level \d/.test(t) && /Achievements/.test(t) && /Runs/.test(t));
   await shot('career');
   await tab('leaderboard'); t = await text(); ok('leaderboard page renders', /LEADERBOARD/.test(t));
-  await tab('updates'); t = await text(); ok('updates page lists v2.0.0', /v2\.0\.0/.test(t) && /Premium codes/.test(t));
+  await tab('updates'); t = await text(); ok('updates page lists v2.0.1', /v2\.0\.1/.test(t) && /Spectator|online modes/.test(t));
   await shot('updates');
   await tab('support'); t = await text(); ok('support page opens', /SUPPORT/.test(t) && /NEW REQUEST/.test(t));
 

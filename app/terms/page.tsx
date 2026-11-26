@@ -28,7 +28,7 @@ export default function Terms() {
       <p>The Game is meant to be played as intended. The following are forbidden: cheating tools, automation or bots in online modes, modifying or injecting into the client, exploiting bugs on purpose (report them instead), tampering with scores, network manipulation, boosting or throwing matches, and avoiding a sanction.</p>
       <ul>
         <li><b>How we check.</b> The server validates scores, speed and movement, looks at the network type (VPN, proxy or datacenter connections are not allowed online) and links accounts that share a device. Some decisions are assisted by automated and AI reviewers; they never ban on their own.</li>
-        <li><b>Sanctions.</b> Warning, temporary removal from online play, or a ban, depending on the evidence and on repeat behaviour. Cheats from the Secret Menu make a session a practice session: nothing is saved or ranked.</li>
+        <li><b>Sanctions.</b> Warning, temporary removal from online play, or a ban, depending on the evidence and on repeat behaviour. Cheating makes a session a practice session: nothing is saved or ranked.</li>
         <li><b>Appeals.</b> You can contest a sanction up to three times from the Support tab, with an AI review (usually under 15 minutes) or a human review (1 to 7 days). Appeals are free.</li>
       </ul>
 

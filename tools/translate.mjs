@@ -1,4 +1,4 @@
-// Machine-translates every English UI string (dictionary, patch notes, settings, secret menu, new UI) into the extra languages.
+// Machine-translates every English UI string (dictionary, patch notes, settings and new UI) into the extra languages.
 //   node tools/translate.mjs [lang ...]          (default: every language except English)
 // Output: public/lang/<code>.json = { "English string": "translation" }. Re-runnable: strings already done are skipped, so after
 // adding UI text you only pay for the new strings. English and French are hand-written; French only gets its gaps filled here.
@@ -9,7 +9,7 @@ import path from 'node:path';
 import { EN_KEYS, LANGS } from '../src/i18n.js';
 import { UPDATES } from '../server/updates.mjs';
 import { SCHEMA } from '../src/settings.js';
-import { OPTIONS, GROUPS } from '../src/secret.js';
+import { OPTIONS, GROUPS } from '../src/tuning.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 const OUT = path.join(root, 'public', 'lang');
