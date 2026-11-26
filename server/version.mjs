@@ -1,6 +1,6 @@
 // Backend version. The full version is `${BACKEND_VERSION}-${commit}` (commit = the deployed git commit, short).
 import { execFileSync } from 'node:child_process';
-export const BACKEND_VERSION = '2.0.1';
+export const BACKEND_VERSION = '3.0.1';
 function commit() {
   const e = process.env;
   const sha = e.RENDER_GIT_COMMIT || e.RAILWAY_GIT_COMMIT_SHA || e.VERCEL_GIT_COMMIT_SHA || e.GIT_COMMIT || e.SOURCE_VERSION;

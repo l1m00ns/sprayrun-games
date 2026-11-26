@@ -206,7 +206,18 @@ export function initSocial(ctx) {
       if (good) { $('frAdd').value = ''; loadFriends(); }
     };
     for (const b of box.querySelectorAll('[data-msg]')) b.onclick = () => { audio.sfx.click(); openChat(b.dataset.msg, b.dataset.name); };
-    for (const b of box.querySelectorAll('[data-inv]')) b.onclick = async () => { audio.sfx.click(); await ensureOnline().catch(() => {}); net.send({ t: 'p_invite', id: b.dataset.inv }); };
+    const invite = async (id) => {
+      audio.sfx.click();
+      if (!net.connected) { try { await ensureOnline(); } catch { toast('Could not reach the server'); return; } }
+      net.send({ t: 'p_invite', id });
+    };
+    // Bind the current buttons directly AND delegate: a refresh or a synthetic click can no longer lose the
+    // invitation, and the direct handler stops the event so it is sent exactly once.
+    for (const b of box.querySelectorAll('[data-inv]')) b.onclick = (e) => { e.stopPropagation(); invite(b.dataset.inv); };
+    box.onclick = (e) => {
+      const b = e.target.closest('[data-inv]'); if (!b || !box.contains(b)) return;
+      invite(b.dataset.inv);
+    };
     for (const b of box.querySelectorAll('[data-join]')) b.onclick = () => { audio.sfx.click(); const f = d.friends.find((x) => x.id === b.dataset.join); toast(`Ask ${f ? f.name : 'your friend'} to invite you`); };
     for (const b of box.querySelectorAll('[data-acc]')) b.onclick = async () => { audio.sfx.click(); await api.call('POST', '/api/friends/respond', { id: b.dataset.acc, accept: true }); loadFriends(); };
     for (const b of box.querySelectorAll('[data-dec]')) b.onclick = async () => { audio.sfx.click(); await api.call('POST', '/api/friends/respond', { id: b.dataset.dec, accept: false }); loadFriends(); };

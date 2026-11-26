@@ -27,7 +27,15 @@ export const MODES = [
 export const modeById = (id) => MODES.find((m) => m.id === (id === 'goldrush' ? 'neonrush' : id)) || MODES.find((m) => m.id === 'normal-1'); // old saves picked Gold Rush
 export const specOf = (m, rules) => ({ kind: m.kind === 'ranked' ? 'ranked' : 'normal', size: m.size, mode: rules === 'nocoin' ? 'nocoin' : 'classic', event: m.event || null });
 export const sizeName = (n) => SIZES[n] || 'Solo';
-export function modeFromSpec(spec) { return MODES.find((m) => m.kind === spec.kind && m.size === spec.size) || modeById('normal-1'); }
+// Resolve a server spec back to the exact mode card. The event matters: a plain Normal Solo spec must not
+// become Neon Rush just because Neon is the first normal mode in the list.
+export function modeFromSpec(spec = {}) {
+  const kind = spec.kind === 'ranked' ? 'ranked' : 'normal';
+  const size = [1, 2, 3].includes(Number(spec.size)) ? Number(spec.size) : 1;
+  const event = spec.event === 'neon' ? 'neon' : null;
+  const pool = MODES.filter((m) => m.kind === kind && m.size === size && !m.room);
+  return pool.find((m) => (m.event || null) === event) || pool.find((m) => !m.event) || pool[0] || modeById('normal-1');
+}
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // A 160 x 100 picture for a mode.

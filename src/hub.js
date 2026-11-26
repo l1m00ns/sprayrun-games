@@ -3,7 +3,7 @@
 import * as C from './consts.js';
 import { OUTFITS, BOARDS, TRAILS, SKINS, BAGS, AURAS } from './cosmetics.js';
 import { boardSVG } from './icons.js';
-import { fillIcons } from './iconsax.js';
+import { fillIcons, icon } from './iconsax.js';
 import { trackEvent } from './analytics.js';
 
 const $ = (id) => document.getElementById(id);
@@ -108,6 +108,30 @@ export function initHub(ctx) {
   const live = (my) => my === seq; // a page render is stale once the user switched tab
 
   for (const b of document.querySelectorAll('.tb-tab')) b.onclick = () => { click(); open(b.dataset.tab); };
+
+  // Phone menu: one button with all the tabs (the desktop bar is hidden on small screens).
+  const drawer = $('tbDrawer'), menuBtn = $('tbMenu');
+  if (drawer && drawer.parentElement && drawer.parentElement.id === 'topbar') $('ui').appendChild(drawer); // fixed sheet, not clipped by the bar's backdrop-filter
+  const closeDrawer = () => { drawer.classList.add('hidden'); drawer.setAttribute('aria-hidden', 'true'); menuBtn.setAttribute('aria-expanded', 'false'); };
+  if (drawer && menuBtn) {
+    const tabs = [...document.querySelectorAll('#tbTabs .tb-tab')].map((b) => `<button class="tbd-item" data-nav="${b.dataset.tab}">${b.querySelector('.tb-ic') ? b.querySelector('.tb-ic').outerHTML : ''}<span>${esc(b.querySelector('.tb-lbl').textContent)}</span></button>`).join('');
+    drawer.innerHTML = `<div class="tbd-sheet"><div class="tbd-head"><b>MENU</b><button class="icon-btn" id="tbDrawerClose" aria-label="Close menu">${icon('close', 20)}</button></div><div class="tbd-grid">${tabs}<button class="tbd-item" data-act="account"><span class="tb-ic">${icon('user', 22)}</span><span>ACCOUNT</span></button><button class="tbd-item" data-act="friends"><span class="tb-ic">${icon('users', 22)}</span><span>FRIENDS</span></button><button class="tbd-item" data-act="settings"><span class="tb-ic">${icon('settings', 22)}</span><span>SETTINGS</span></button><button class="tbd-item" data-act="lang"><span class="tb-ic">${icon('language', 22)}</span><span>LANGUAGE</span></button></div><p class="tbd-note">Everything in one place</p></div>`;
+    fillIcons(drawer);
+    const toggle = (on = drawer.classList.contains('hidden')) => { drawer.classList.toggle('hidden', !on); drawer.setAttribute('aria-hidden', String(!on)); menuBtn.setAttribute('aria-expanded', String(on)); if (on) audio.sfx.click(); };
+    menuBtn.onclick = (e) => { e.stopPropagation(); toggle(); };
+    drawer.onclick = (e) => { if (e.target === drawer) toggle(false); };
+    $('tbDrawerClose').onclick = () => toggle(false);
+    for (const b of drawer.querySelectorAll('[data-nav]')) b.onclick = () => { click(); closeDrawer(); open(b.dataset.nav); };
+    for (const b of drawer.querySelectorAll('[data-act]')) b.onclick = () => {
+      click(); closeDrawer();
+      if (b.dataset.act === 'account') open('account');
+      else if (b.dataset.act === 'friends') $('tbFriends').click();
+      else if (b.dataset.act === 'settings') $('btnSettings').click();
+      else if (b.dataset.act === 'lang') $('tbLang').click();
+    };
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !drawer.classList.contains('hidden')) closeDrawer(); });
+    window.addEventListener('resize', () => { if (window.innerWidth > 900) closeDrawer(); });
+  }
   $('tbLogo').onclick = () => { click(); open('play'); };
   $('tbAcct').onclick = () => { click(); open('account'); };
   $('tbLevel').onclick = () => { click(); open('career'); };
@@ -432,7 +456,7 @@ export function initHub(ctx) {
     if (typeof appealView === 'number') return appealDetail(my, appealView);
     if (appealView === 'form') return appealForm(my, d);
     const c = d.case, sanction = c.banned ? `Your account is suspended${c.banReason ? ': ' + esc(c.banReason) : ''}` : c.kickedUntil ? 'You were removed from online play for a while' : c.strikes > 0 ? `You have ${c.strikes} fair-play strike${c.strikes > 1 ? 's' : ''} on record` : '';
-    const rows = d.appeals.map((a) => { const [t, col] = chip(a); return `<div class="rowx click" data-id="${a.id}"><b>#${a.id}</b><span class="tag2">${a.type === 'ai' ? 'AI Review' : 'Human Review'}</span><span class="sp"></span><span style="color:${col};font-family:var(--font)">${t}</span><span class="dim">${when(a.updated)}</span></div>`; }).join('');
+    const rows = (Array.isArray(d.appeals) ? d.appeals : []).map((a) => { const [t, col] = chip(a); return `<div class="rowx click" data-id="${a.id}"><b>#${a.id}</b><span class="tag2">${a.type === 'ai' ? 'AI Review' : 'Human Review'}</span><span class="sp"></span><span style="color:${col};font-family:var(--font)">${t}</span><span class="dim">${when(a.updated)}</span></div>`; }).join('');
     body.innerHTML = supSub() + head('APPEALS', 'Contest a kick, a ban or a strike. Maximum 3 appeals per account.', `<div class="pill"><span>${d.used}/${d.limit} used</span></div>`)
       + (sanction ? `<div class="banner" style="border-color:#e0344a"><div><h2>${sanction}</h2><p>${d.eligibility.ok ? 'If you think this is a mistake, you can contest it. Choose how it is reviewed when you submit.' : esc(d.eligibility.message || '')}</p></div>${d.eligibility.ok ? '<button class="btn go" id="appealNew">CONTEST THIS SANCTION</button>' : ''}</div>` : '<div class="empty">Nothing to contest: your account is in good standing.</div>')
       + (rows ? `<h3 class="ink" style="margin:14px 0 6px;color:var(--yellow)">Your appeals</h3>${rows}` : '');

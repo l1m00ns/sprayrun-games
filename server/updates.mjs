@@ -1,6 +1,23 @@
 // Update history shown in the game's "Updates" tab. Newest first. Edit this file when you ship something.
 export const UPDATES = [
   {
+    version: '3.0.1', date: '2026-11-26', title: 'Mobile hub, honest hitboxes, mode fix',
+    tags: ['major', 'mobile', 'fix', 'online'],
+    notes: [
+      'The phone layout is rebuilt around a three-bar menu: every tab, account, friends, settings and language in one sheet, with larger touch targets and safe-area spacing. The desktop bar is unchanged.',
+      'Multiplayer mode resolution is fixed for good: a Normal or Ranked Solo, Duos or Trios search can no longer turn into Neon Rush. Only a Neon spec gets the Neon card and the neon event.',
+      'Train and container hitboxes are measured from the rendered models instead of hand-written numbers, and the squared-off train bodies remove invisible nose overhangs. The player footprint is measured from the runner torso.',
+    ],
+  },
+  {
+    version: '2.0.2', date: '2026-11-26', title: 'Multiplayer mode resolution fixed',
+    tags: ['fix', 'online'],
+    notes: [
+      'Every online mode keeps its own identity now: a Normal or Ranked Solo, Duos or Trios spec is no longer resolved as Neon Rush. The mode card, search overlay and room all show the selected mode, and Neon Rush remains the only mode with the neon event.',
+      'The queue key includes the event, so Neon and Classic searches never share a pool. The mode chosen in the picker is sent unchanged to the server.',
+    ],
+  },
+  {
     version: '2.0.1', date: '2026-11-26', title: 'Spectator, online modes, fair play',
     tags: ['fix', 'online', 'fair-play'],
     notes: [

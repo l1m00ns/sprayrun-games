@@ -90,8 +90,7 @@ function bullet(role, style, seed) {
   return memo(`car.bullet.${role}.${style}.${seed}`, () => {
     const pal = [['#e8eef8', '#2f6fe0'], ['#f2f4f6', '#e0453a'], ['#eef6f4', '#1fb59a'], ['#f4f0e6', '#7a46c7']][style % 4];
     const tex = TT.texBullet(pal[0], pal[1], seed);
-    const g = bodyBox();
-    nose(g, role === 'lead' || role === 'both', role === 'tail' || role === 'both');
+    const g = bodyBox(); // squared body: the hitbox matches what the player sees
     const glass = mat('#10243f', { rim: true });
     const sideM = texMat(tex, { rim: true }), roof = mat('#f1f4f8', { rim: true });
     return [part(g, [sideM, sideM, roof, dark(), glass, glass]), part(underGeo(), vcMat())];
@@ -102,8 +101,7 @@ function maglev(role, style, seed) {
   return memo(`car.maglev.${role}.${style}.${seed}`, () => {
     const cols = [['#2bdcff', '#ff3dd0'], ['#ff3dd0', '#ffd23f'], ['#7dff6b', '#2bdcff']][style % 3];
     const tx = TT.texMaglev(cols[0], cols[1], seed);
-    const g = bodyBox();
-    nose(g, role === 'lead' || role === 'both', role === 'tail' || role === 'both');
+    const g = bodyBox(); // squared maglev body: no invisible nose overhang
     const m = texMat(tx.map, { emissive: 0xffffff, emissiveMap: tx.emissive, ei: 1.3, rim: true });
     const topM = mat('#141a33', { rim: true });
     const glow = mat(cols[0], { emissive: new THREE.Color(cols[0]), ei: 1.8 });
@@ -116,7 +114,7 @@ function maglev(role, style, seed) {
 function loco(color, accent, num, withPlow) {
   return memo(`car.loco.${color}.${withPlow}`, () => {
     const len = withPlow ? LEN - 2.4 : LEN;
-    const body = new RoundedBoxGeometry(W, BH, len, 3, 0.18).translate(0, BOT + BH / 2, -len / 2 - (withPlow ? 2.4 : 0));
+    const body = new THREE.BoxGeometry(W, BH, len).translate(0, BOT + BH / 2, -len / 2 - (withPlow ? 2.4 : 0)); // square cab for an honest hitbox
     const tex = TT.texLoco(color, accent, num, num);
     const front = T.makeTrainFront({ body: color, roof: '#2a2d36', stripe: accent, skirt: '#1c1e26', windows: true, label: 'LOCO ' + num });
     const sideM = texMat(tex, { rim: true });

@@ -168,7 +168,7 @@ try {
   ok('each ladder keeps its own rating: Duos has 1 game and is provisional', lad && lad.duos.games === 1 && lad.duos.provisional === true && lad.solo.games === 0 && lad.trios.games === 0, JSON.stringify(lad && lad.duos));
   ok('a provisional ladder moves faster than a settled one', rt.delta >= 24, `delta=${rt.delta}`);
   const deep = await (await fetch(base + '/api/health?deep=1')).json();
-  ok('deep health reports the database, version and uptime', deep.ok && deep.db.ok && /^2\.\d+\.\d+-/.test(deep.version) && deep.uptime_s >= 0, JSON.stringify(deep).slice(0, 120));
+  ok('deep health reports the database, version and uptime', deep.ok && deep.db.ok && /^3\.\d+\.\d+-/.test(deep.version) && deep.uptime_s >= 0, JSON.stringify(deep).slice(0, 120));
 
 
   // ------------------------------------------------------------------------------------- trios, solo FFA, mixed groups

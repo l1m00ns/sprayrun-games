@@ -510,6 +510,7 @@ export class ItemField {
 export class World {
   constructor(scene) {
     this.scene = scene;
+    this.playerHW = C.PLAYER_HW; // refreshed from the rendered runner's torso (see main.js)
     this.root = new THREE.Group();
     scene.add(this.root);
     this.segs = [];
@@ -667,7 +668,7 @@ export class World {
         const zPad = s.lethal ? travel : 0;
         if (zMax < -HD - zPad || zMin > HD) continue;
         const adx = Math.abs(px - s.x);
-        if (adx >= C.PLAYER_HW + s.hw) continue;
+        if (adx >= (this.playerHW || C.PLAYER_HW) + s.hw) continue;
         let top = s.yMax;
         if (s.ramp) {
           const f = clamp((zMax - 0) / (zMax - zMin), 0, 1);
@@ -818,10 +819,21 @@ export class World {
     const m = makeOver(); m.position.set(C.LANES[lane], 0, z); seg.add(m);
     seg.addSolid({ kind: 'over', obj: m, x: C.LANES[lane], hw: 0.95, lz0: z - 0.65, lz1: z + 0.65, yMin: C.OVERHEAD_BOTTOM, yMax: C.OVERHEAD_BOTTOM + C.OVERHEAD_H, walkable: false, lethal: false });
   }
+  // Bounds straight from the rendered model, not from hand-written numbers: a longer car, a wider container or a
+  // chunkier nose gets the hitbox it actually shows. Decorative roof gear is capped at the playable body height.
+  modelBounds(obj, { maxHw = 1.2, maxY = C.TRAIN_H, inset = 0.035 } = {}) {
+    obj.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(obj);
+    const hw = Math.max(0.05, Math.min(maxHw, (b.max.x - b.min.x) / 2) - inset);
+    return { x: (b.min.x + b.max.x) / 2, hw, lz0: b.min.z + inset, lz1: b.max.z - inset, yMin: Math.max(0, b.min.y + inset), yMax: Math.min(maxY, b.max.y) };
+  }
   placeContainer(seg, lane, z, len) {
-    const m = makeContainer(len, randInt(0, 1)); m.position.set(C.LANES[lane], 0, z); seg.add(m);
+    const m = makeContainer(len, randInt(0, 1)); m.position.set(C.LANES[lane], 0, z);
+    const b = this.modelBounds(m, { maxHw: C.TRAIN_W / 2 }); // before adding to the segment: bounds are segment-local
+    b.lz1 = Math.min(b.lz1, z); // a container starts exactly at its model origin; no invisible front lip
+    seg.add(m);
     m.children.forEach((c) => seg.own.push(c.geometry));
-    seg.addSolid({ kind: 'container', obj: m, x: C.LANES[lane], hw: 0.95, lz0: z - len, lz1: z, yMin: 0, yMax: C.TRAIN_H, walkable: C.ROOF_LAND, solidTop: !C.ROOF_LAND, lethal: true });
+    seg.addSolid({ kind: 'container', obj: m, ...b, walkable: C.ROOF_LAND, solidTop: !C.ROOF_LAND, lethal: true });
   }
   placeTrain(seg, lane, z, carriages, ramp, biome, vz = 0) {
     if (this.staticTrains) vz = 0;
@@ -835,15 +847,18 @@ export class World {
       zt = z - C.RAMP_LEN;
     }
     const t = buildTrain(biome, carriages);
-    t.position.set(x, 0, zt); seg.add(t);
+    t.position.set(x, 0, zt);
     const len = carriages * C.CARRIAGE_LEN + (carriages - 1) * C.CARRIAGE_GAP;
+    const bounds = this.modelBounds(t, { maxHw: C.TRAIN_W / 2 }); // before seg.add and the headlight: segment-local, playable height
+    bounds.lz1 = Math.min(bounds.lz1, zt); // square front: no decorative lip becomes an invisible wall
+    seg.add(t);
     let headlight = null;
     if (vz) {
       headlight = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), basicMat('#fff2b0', { map: A.glowTex, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false }));
       headlight.position.set(0, 1.9, 0.4); headlight.frustumCulled = false; fxLayer(headlight); t.add(headlight);
       seg.own.push(headlight.geometry);
     }
-    seg.addSolid({ kind: 'train', obj: t, baseZ: zt, off: 0, vz, trigger: vz ? TRIGGER : 0, headlight, started: false, steam: !!t.userData.steam, x, hw: 0.95, lz0: zt - len, lz1: zt, yMin: 0, yMax: C.TRAIN_H, walkable: C.ROOF_LAND, solidTop: !C.ROOF_LAND, lethal: true });
+    seg.addSolid({ kind: 'train', obj: t, baseZ: zt, off: 0, vz, trigger: vz ? TRIGGER : 0, headlight, started: false, steam: !!t.userData.steam, ...bounds, walkable: C.ROOF_LAND, solidTop: !C.ROOF_LAND, lethal: true });
     // no roof coin line: the roof is a landing pad, not a second lane to farm
     return { zt, len };
   }

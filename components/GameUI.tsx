@@ -31,6 +31,8 @@ export default function GameUI() {
             <button className="tb-tab" data-tab="updates"><span className="tb-ic" data-ic="updates" data-duo="" data-s="22"></span><span className="tb-lbl">UPDATES</span><i className="tb-badge" id="tbUpBadge"></i></button>
             <button className="tb-tab" data-tab="support"><span className="tb-ic" data-ic="support" data-duo="" data-s="22"></span><span className="tb-lbl">SUPPORT</span></button>
           </nav>
+          <button id="tbMenu" className="btn round sm tb-menu" aria-label="Open menu" aria-expanded="false"><span className="tb-bars"><i></i><i></i><i></i></span></button>
+          <div id="tbDrawer" className="hidden" aria-hidden="true"></div>
           <div className="tb-right">
             <span className="pill online" id="mOnline"><span className="dotlive off"></span>Offline</span>
             <div className="pill tb-coins"><span className="coin-i"></span><span id="mCoins">0</span></div>

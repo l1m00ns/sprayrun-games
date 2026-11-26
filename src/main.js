@@ -190,7 +190,7 @@ let rival = null; // optional practice ghost (Settings > Practice ghost), never 
 
 const P = {
   lane: 1, target: 1, prev: 1, x: 0, y: 0, vy: 0, grounded: true, coyote: 0, vx: 0,
-  rollT: 0, rolling: false, rollQueued: false, h: C.PLAYER_H,
+  rollT: 0, rolling: false, rollQueued: false, h: C.PLAYER_H, hw: C.PLAYER_HW,
   onBoard: false, boardT: 0, inv: 0, bump: 0, stumbleT: 0,
   jetY: 0, ground: 0, groundSmooth: 0, jetting: false, jetLeft: 0, jetCoinT: 0, jumpBuffer: 0,
   laneFrom: 0, laneT: 1, laneDur: 0.27,
@@ -246,6 +246,15 @@ function buildPlayer() {
   // rebuild at 0 and show his back while the idle turn caught up).
   player.root.rotation.y = state === 'menu' ? -0.55 : 0;
   scene.add(player.root);
+  // A hitbox derived from the actual torso (shoulders + arms), not a guessed constant. Clamped so a big cosmetic
+  // backpack or a raised arm never makes the runner unfairly wide; roll keeps the same footprint.
+  try {
+    const ry = player.root.rotation.y;
+    player.root.rotation.y = 0; player.root.updateMatrixWorld(true); // measure the body square-on, not the menu pose
+    const bb = new THREE.Box3().setFromObject(player.rig.torso);
+    P.hw = Math.max(0.26, Math.min(0.30, (bb.max.x - bb.min.x) * 0.42)); // the torso half-width, never the cosmetic props
+    player.root.rotation.y = ry; player.root.updateMatrixWorld(true);
+  } catch { P.hw = C.PLAYER_HW; }
 }
 
 const TIPS = ['Double-tap Space to launch your hoverboard.', 'Trains with a flashing triangle are coming at you - switch lanes!', 'Super Sneakers can put you on a train roof; the front is always a wall.',
@@ -442,6 +451,7 @@ function startRun(opts = {}) {
   run.revives = 0; run.chestBoards = 0;
   run.boostT = 0; run.boostMul = 1; run.noCoinsT = 0; run.duelCount = 0; run.deathSaved = false; P.secondLife = false;
   run.cheated = !!opts.ltm || !!opts.explore; // online races are never "practice": the server scores them
+  world.playerHW = P.hw || C.PLAYER_HW; // every runner uses the same measured footprint on every client
   world.staticTrains = !!mp.active; // every player must see the same moving obstacles at the same distance
   run.fun = opts.fun || null; run.explore = !!opts.explore; run.nudge = 0; run.nudgeT = 0;
   run.event = opts.event || null; run.night = run.event === 'neon'; run.neonMagnet = false;
@@ -1914,7 +1924,7 @@ async function checkAppeals() {
   const d = await api.appeals();
   if (!d) return;
   const seen = save.seenAppeals || (save.seenAppeals = []);
-  for (const a of d.appeals) {
+  for (const a of (Array.isArray(d.appeals) ? d.appeals : [])) {
     if (a.status !== 'decided' || seen.includes(a.id) || Date.now() - a.decided > 7 * 86400e3) continue;
     seen.push(a.id); persist();
     await api.refreshMe(); renderProfile(); renderMenuChrome();

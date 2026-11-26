@@ -20,6 +20,14 @@ for (const [w, h, tag] of [[390, 844, 'portrait'], [844, 390, 'landscape']]) {
   await page.screenshot({ path: `${OUT}/${tag}-picker.png` });
   ok((await overflow()).length === 0, `${tag}: mode picker fits`, (await overflow()).join(' '));
   await page.evaluate(() => document.getElementById('mpClose').click()); await sleep(200);
+  const menuShown = await page.evaluate(() => { const b = document.getElementById('tbMenu'); return !!b && getComputedStyle(b).display !== 'none'; });
+  ok(menuShown, `${tag}: the three-bar menu button is visible`);
+  await page.evaluate(() => document.getElementById('tbMenu').click()); await sleep(300);
+  const drawer = await page.evaluate(() => ({ open: !document.getElementById('tbDrawer').classList.contains('hidden'), tabs: document.querySelectorAll('#tbDrawer [data-nav]').length, actions: document.querySelectorAll('#tbDrawer [data-act]').length }));
+  ok(drawer.open && drawer.tabs >= 7 && drawer.actions === 4, `${tag}: the menu sheet lists every tab and account action`, JSON.stringify(drawer));
+  await page.screenshot({ path: `${OUT}/${tag}-drawer.png` });
+  ok((await overflow()).length === 0, `${tag}: the menu sheet fits`, (await overflow()).join(' '));
+  await page.evaluate(() => document.getElementById('tbDrawerClose').click()); await sleep(200);
   await page.evaluate(() => document.getElementById('tbFriends').click()); await sleep(1500);
   await page.screenshot({ path: `${OUT}/${tag}-friends.png` });
   ok((await overflow()).length === 0, `${tag}: friends panel fits`, (await overflow()).join(' '));
