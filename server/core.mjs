@@ -251,7 +251,7 @@ function reviewDuelAim(pid, st) {
   judge({ kind: 'duel', flags: [{ flag: 'aim_stats', hard: false }], duel: { shots: st.shots, hits: st.hits, head: st.head, dmg: st.dmg }, account: { ageDays: Math.floor((now() - p.created) / 86400000), games: p.games, strikes: p.strikes } }, { pid })
     .then((v) => {
       q.setEventVerdict.run(JSON.stringify({ verdict: v.verdict, confidence: v.confidence, reasons: v.reasons, source: v.source, rounds: v.rounds, votes: v.votes }), v.recommended_action, evId);
-      if (v.verdict === 'cheating' && v.confidence === 'high') strike(pid, 'judge:duel_aim', v.summary, 1);
+      // No automatic sanction from an aim sample: a human reviews the evidence. This is the false-positive guard.
     }).catch(() => { /* never affects the player */ });
 }
 
