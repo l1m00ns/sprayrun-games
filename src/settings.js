@@ -22,6 +22,7 @@ export const SCHEMA = [
     { k: 'outline', label: 'Cartoon outlines', type: 'toggle', def: true },
     { k: 'bloom', label: 'Bloom glow', type: 'toggle', def: true },
     { k: 'shadows', label: 'Shadows', type: 'toggle', def: true },
+    { k: 'hdri', label: 'HDRI reflections', type: 'toggle', def: true, hint: 'A real Poly Haven sky lights the metal, the boards and the runners. The visible sky stays the game sky; turn this off to save memory on a small device.' },
     { k: 'weather', label: 'Weather effects', type: 'toggle', def: true },
     { k: 'fpsCap', label: 'Frame rate limit', type: 'select', def: '0', opts: [['0', 'Unlimited (display rate)'], ['60', '60 FPS'], ['30', '30 FPS']] },
     { k: 'showFps', label: 'Show FPS counter', type: 'toggle', def: false },

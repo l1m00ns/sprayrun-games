@@ -6,7 +6,7 @@ const defaults = () => ({
   bestDist: 0,
   bestCoins: 0,
   character: 'rio',
-  unlocked: ['rio', 'kit'],
+  unlocked: ['rio', 'kit', 'rook'],
   boards: 2,
   upgrades: { magnet: 0, jetpack: 0, sneakers: 0, mult: 0 },
   missions: null,
@@ -37,6 +37,7 @@ try {
 }
 
 if (!data.unlocked.includes('rio')) data.unlocked.unshift('rio'); // the free starter hero
+if (!data.unlocked.includes('rook')) data.unlocked.push('rook'); // free original runner added in this update
 export const save = data;
 let hook = null;
 export const setPersistHook = (fn) => { hook = fn; }; // cloud sync listens here

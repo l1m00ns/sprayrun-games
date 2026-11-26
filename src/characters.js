@@ -11,6 +11,7 @@ import { STYLES, AURAS } from './cosmetics.js';
 export const CHARACTERS = [
   { id: 'rio', name: 'Rio', cost: 0, tag: 'Cap on, hood down, no brakes', skin: '#d9a07a', top: '#ff7a1a', accent: '#fff4e0', pants: '#1f2a44', shoes: '#f4f4f4', sole: '#ff7a1a', hat: 'cap', hatColor: '#10192e', hair: '#2b1b12', bag: '#29d6ff', jacket: 'puffer' },
   { id: 'kit', name: 'Kit', cost: 0, tag: 'Rookie of the rails', skin: '#f2c29b', top: '#e8453c', accent: '#ffffff', pants: '#2b3a67', shoes: '#f7f7f7', sole: '#e8453c', hat: 'cap', hatColor: '#1d2a4a', hair: '#4a2c1a', bag: '#ffd23f' },
+  { id: 'rook', name: 'Rook', cost: 0, tag: 'Boombox on his back, city in his step', skin: '#b97850', top: '#0f3d4a', sleeve: '#f1e6d2', accent: '#ff6a3d', pants: '#1b2233', shoes: '#f1e6d2', sole: '#ff6a3d', hat: 'bucket', hatColor: '#0f3d4a', hair: '#241610', eyes: '#2b1a12', bagId: 'bg_boombox', jacket: 'varsity', chain: true, gloves: true, earring: true, kneePatch: true },
   { id: 'nova', name: 'Nova', cost: 600, tag: 'Beat in her headphones', skin: '#8d5a3b', top: '#7b4dff', accent: '#ffd23f', pants: '#1d1d2b', shoes: '#ffd23f', sole: '#ffffff', hat: 'phones', hatColor: '#ffd23f', hair: '#1a1210', bag: '#ff5fa2' },
   { id: 'rex', name: 'Rex', cost: 1800, tag: 'Punk of the platform', skin: '#e0a374', top: '#27b868', accent: '#111111', pants: '#3a2c2c', shoes: '#ff6b2c', sole: '#111111', hat: 'mohawk', hatColor: '#ff6b2c', hair: '#ff6b2c', bag: '#222222' },
   { id: 'zip', name: 'Zip', cost: 3500, tag: 'Never stops moving', skin: '#fbd5b5', top: '#ffd23f', accent: '#1a1a1a', pants: '#3d6cff', shoes: '#ffffff', sole: '#3d6cff', hat: 'beanie', hatColor: '#ff4f81', hair: '#d49a3a', bag: '#3d6cff' },
@@ -61,7 +62,7 @@ function buildHat(head, def) {
     return d;
   };
   // hair base (back of head) for most styles
-  if (!['beanie', 'cat', 'police', 'goggles', 'bunny'].includes(def.hat)) {
+  if (!['beanie', 'cat', 'police', 'goggles', 'bunny', 'bucket'].includes(def.hat)) {
     const h = dome(0.325, hair, 1.0);
     h.rotation.x = 0.35;
     h.position.set(0, 0.02, 0.02);
@@ -247,6 +248,28 @@ function buildHat(head, def) {
       }
       break;
     }
+    case 'bucket': {
+      // soft bucket hat: a low crown, a wide floppy brim, a coral band and a little pin; a fringe peeks out underneath
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.32, 0.22, 22), hc);
+      crown.position.y = 0.33;
+      head.add(crown);
+      // worn high, brim tipped up at the front so the eyes stay visible from the menu camera
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.45, 0.055, 26), hc);
+      brim.position.y = 0.23;
+      brim.rotation.x = 0.1;
+      head.add(brim);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.305, 0.33, 0.055, 22), mat(def.accent));
+      band.position.y = 0.35;
+      head.add(band);
+      const pin = sph(0.028, mat('#ffd23f', { metal: 0.7, rough: 0.25 }));
+      pin.position.set(0.18, 0.34, -0.27);
+      head.add(pin);
+      const fringe = new THREE.Mesh(new THREE.SphereGeometry(0.32, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), hair);
+      fringe.scale.y = 0.35;
+      fringe.position.set(0, -0.01, 0.02);
+      head.add(fringe);
+      break;
+    }
     case 'police': {
       const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.2, 20), hc);
       crown.position.set(0, 0.27, 0);
@@ -307,6 +330,52 @@ function buildBagVariant(id, torsoP, def) {
     const e = new THREE.LineSegments(new THREE.EdgesGeometry(c.geometry), new THREE.LineBasicMaterial({ color: 0x29f0ff })); fxLayer(e); g.add(e);
     const sm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), mat('#ff3dd0', { emissive: new THREE.Color('#ff3dd0'), ei: 0.9 })); sm.name = 'cubeorbit'; g.add(sm);
     g.userData.spin = c; g.position.set(0, 0.42, 0.4);
+  } else if (id === 'bg_boombox') {
+    // Rook's signature: a chunky boombox backpack, speakers facing the camera, cassette deck and chrome handle
+    const shell = rbox(0.58, 0.34, 0.22, 0.05, mat('#20242e', { rough: 0.55 }));
+    g.add(shell);
+    const face = rbox(0.54, 0.28, 0.02, 0.02, mat('#2c313d', { rough: 0.7 })); face.position.z = 0.12; g.add(face);
+    for (const sx of [-1, 1]) {
+      const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.02, 20), mat('#0d0f14', { rough: 0.9 }));
+      sp.rotation.x = Math.PI / 2; sp.position.set(sx * 0.165, -0.02, 0.135); g.add(sp);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.095, 0.013, 6, 20), mat('#ff6a3d'));
+      rim.position.set(sx * 0.165, -0.02, 0.145); g.add(rim);
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.033, 0.02, 12), mat('#c7ccd6', { metal: 0.6, rough: 0.3 }));
+      hub.rotation.x = Math.PI / 2; hub.position.set(sx * 0.165, -0.02, 0.15); g.add(hub);
+    }
+    const tape = rbox(0.18, 0.11, 0.02, 0.02, mat('#3a4150'));
+    tape.position.set(0, 0.08, 0.135); g.add(tape);
+    for (const sx of [-1, 1]) {
+      const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.02, 10), mat('#c7ccd6', { metal: 0.5 }));
+      reel.rotation.x = Math.PI / 2; reel.position.set(sx * 0.05, 0.08, 0.15); g.add(reel);
+    }
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.02, 6, 18, Math.PI), mat('#c7ccd6', { metal: 0.5, rough: 0.35 }));
+    handle.position.set(0, 0.18, 0); g.add(handle);
+    g.position.set(0, 0.36, 0.36);
+  } else if (id === 'bg_basket') {
+    // Easter basket: woven body, a bent handle and three painted eggs peeking out
+    const body = rbox(0.42, 0.34, 0.24, 0.05, mat('#b98a55', { rough: 0.9 })); g.add(body);
+    for (let i = 0; i < 3; i++) {
+      const band = rbox(0.44, 0.025, 0.26, 0.01, mat('#8a6034', { rough: 0.95 }));
+      band.position.y = -0.1 + i * 0.11; g.add(band);
+    }
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.025, 6, 18, Math.PI), mat('#8a6034', { rough: 0.9 }));
+    handle.position.y = 0.16; g.add(handle);
+    for (const [x, y, col] of [[-0.12, 0.2, '#ff9fc8'], [0.02, 0.24, '#ffe08a'], [0.15, 0.19, '#9fe3ff']]) {
+      const egg = sph(0.075, mat(col, { rough: 0.45 })); egg.scale.set(1, 1.25, 1); egg.position.set(x, y, 0.02); g.add(egg);
+    }
+    g.position.set(0, 0.35, 0.34);
+  } else if (id === 'bg_bat') {
+    // a small bat clinging to the pack, wings folded, eyes catching the light
+    const body = sph(0.16, mat('#2a2038', { rough: 0.85 })); body.scale.set(0.8, 1, 0.8); g.add(body);
+    const head = sph(0.12, mat('#2a2038', { rough: 0.85 })); head.position.set(0, 0.18, -0.02); g.add(head);
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 4), mat('#2a2038')); ear.position.set(sx * 0.07, 0.3, -0.02); g.add(ear);
+      const eye = sph(0.018, basicMat('#ffd23f')); eye.position.set(sx * 0.045, 0.19, -0.12); g.add(eye);
+      const wing = rbox(0.28, 0.16, 0.02, 0.05, mat('#3a2a4e', { rough: 0.9 }));
+      wing.position.set(sx * 0.25, 0.03, 0.05); wing.rotation.z = sx * 0.35; wing.rotation.y = sx * 0.5; g.add(wing);
+    }
+    g.position.set(0, 0.35, 0.34);
   } else if (id === 'bg_cup') {
     const gold = mat('#ffd23f', { metal: 0.8, rough: 0.25 });
     const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.09, 0.26, 16), gold); cup.position.y = 0.12; g.add(cup);
@@ -378,6 +447,8 @@ function buildCharacterInner(def, scale) {
 
   const torsoP = pivot(hips, 0, 0.1, 0);
   const puffer = def.jacket === 'puffer' && !def.belly;
+  const varsity = def.jacket === 'varsity' && !def.belly;
+  const sleeveMat = varsity ? mat(def.sleeve || '#f1e6d2', { rough: 0.85 }) : top;
   const torso = rbox(def.belly ? 0.7 : 0.62, 0.62, def.belly ? 0.46 : 0.38, 0.14, top);
   torso.position.y = 0.32;
   torsoP.add(torso);
@@ -419,6 +490,33 @@ function buildCharacterInner(def, scale) {
       pk.rotation.z = -sx * 0.25;
       torsoP.add(pk);
     }
+  } else if (varsity) {
+    // varsity jacket: cream sleeves, a snap placket, ribbed hem, chenille patch and a chest pocket
+    const cream = mat(def.sleeve || '#f1e6d2', { rough: 0.85 });
+    const placket = box(0.06, 0.58, 0.02, cream);
+    placket.position.set(0, 0.34, -0.2);
+    torsoP.add(placket);
+    for (let i = 0; i < 3; i++) {
+      const snap = sph(0.022, accent);
+      snap.position.set(0.07, 0.2 + i * 0.15, -0.215);
+      torsoP.add(snap);
+    }
+    const hem = rbox(0.66, 0.07, 0.41, 0.03, accent);
+    hem.position.y = 0.03;
+    torsoP.add(hem);
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.035, 8, 22, Math.PI), cream);
+    collar.rotation.set(Math.PI / 2, 0, Math.PI);
+    collar.position.set(0, 0.63, 0);
+    torsoP.add(collar);
+    const patch = rbox(0.14, 0.14, 0.02, 0.025, cream);
+    patch.position.set(-0.17, 0.43, -0.2);
+    torsoP.add(patch);
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.045), accent);
+    gem.position.set(-0.17, 0.43, -0.215);
+    torsoP.add(gem);
+    const pocket = rbox(0.13, 0.07, 0.02, 0.015, accent);
+    pocket.position.set(0.18, 0.24, -0.2);
+    torsoP.add(pocket);
   } else {
     // chest stripe / pocket
     const stripe = box(0.64, 0.07, 0.4, accent);
@@ -454,11 +552,23 @@ function buildCharacterInner(def, scale) {
       torsoP.add(strapB);
     }
   }
+  if (def.chain) {
+    // gold chain with a small pendant, tucked over the collar
+    const chainM = mat('#d8dde8', { metal: 0.8, rough: 0.28 });
+    const link = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.012, 6, 24, Math.PI * 1.25), chainM);
+    link.rotation.set(Math.PI / 2, 0.1, 0.4);
+    link.position.set(0, 0.61, 0.04);
+    torsoP.add(link);
+    const pendant = new THREE.Mesh(new THREE.OctahedronGeometry(0.035), mat('#ffd23f', { metal: 0.7, rough: 0.25 }));
+    pendant.position.set(0.02, 0.47, -0.21);
+    torsoP.add(pendant);
+  }
   // neck + head
   const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.12, 10), skin);
   neck.position.y = 0.68;
   torsoP.add(neck);
   const head = pivot(torsoP, 0, 0.98, 0);
+  const faceOut = def.id === 'rook' ? 0.018 : 0; // Rook's features sit on the surface, not sunk into the skull
   const skull = sph(0.31, skin, 24, 18);
   skull.scale.set(1, 0.98, 1.0);
   head.add(skull);
@@ -467,34 +577,40 @@ function buildCharacterInner(def, scale) {
     ear.position.set(sx * 0.3, -0.02, 0.01);
     ear.scale.z = 0.6;
     head.add(ear);
+    if (def.earring && sx === 1) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.043, 0.009, 6, 14), mat('#ffd23f', { metal: 0.8, rough: 0.25 }));
+      ring.position.set(0.335, -0.09, 0.0);
+      ring.rotation.y = Math.PI / 2;
+      head.add(ring);
+    }
     const eye = sph(0.078, mat('#ffffff', { rough: 0.2 }));
-    eye.position.set(sx * 0.11, 0.03, -0.262);
+    eye.position.set(sx * 0.11, 0.03, -0.262 - faceOut);
     eye.scale.set(1, 1.18, 0.5);
     head.add(eye);
     const iris = sph(0.056, mat(def.eyes || '#3a2a20', { rough: 0.2 })); // coloured iris, dark pupil on top
-    iris.position.set(sx * 0.108, 0.026, -0.289);
+    iris.position.set(sx * 0.108, 0.026, -0.289 - faceOut);
     iris.scale.set(1, 1.08, 0.45);
     head.add(iris);
     const pupil = sph(0.034, mat('#0e1016', { rough: 0.2 }));
-    pupil.position.set(sx * 0.108, 0.026, -0.299);
+    pupil.position.set(sx * 0.108, 0.026, -0.299 - faceOut);
     pupil.scale.z = 0.4;
     head.add(pupil);
     const glint = sph(0.016, basicMat('#ffffff'));
-    glint.position.set(sx * 0.108 + 0.016, 0.05, -0.31);
+    glint.position.set(sx * 0.108 + 0.016, 0.05, -0.31 - faceOut);
     head.add(glint);
     const glint2 = sph(0.008, basicMat('#ffffff'));
-    glint2.position.set(sx * 0.108 - 0.014, 0.004, -0.309);
+    glint2.position.set(sx * 0.108 - 0.014, 0.004, -0.309 - faceOut);
     head.add(glint2);
-    const lid = sph(0.082, skin); // upper eyelid: gives the eyes a calm, slightly cool look instead of a stare
-    lid.position.set(sx * 0.11, 0.082, -0.254);
-    lid.scale.set(1, 0.4, 0.5);
+    const lid = sph(0.082, skin); // upper eyelid: gives the eyes a calm look instead of a stare
+    lid.position.set(sx * 0.11, 0.105, -0.26 - faceOut);
+    lid.scale.set(1, 0.28, 0.45);
     head.add(lid);
     const cheek = sph(0.05, mat(new THREE.Color(def.skin).lerp(new THREE.Color('#ff6a6a'), 0.4).getStyle(), { rough: 0.8 }));
-    cheek.position.set(sx * 0.2, -0.075, -0.235);
+    cheek.position.set(sx * 0.2, -0.075, -0.235 - faceOut);
     cheek.scale.set(1, 0.62, 0.3);
     head.add(cheek);
     const brow = box(0.12, 0.028, 0.03, mat(def.hair === '#222' ? '#222' : def.hair, { rough: 0.8 }));
-    brow.position.set(sx * 0.11, 0.13, -0.275);
+    brow.position.set(sx * 0.11, 0.13, -0.275 - faceOut);
     brow.rotation.z = -sx * (def.belly ? -0.35 : 0.12);
     head.add(brow);
   }
@@ -503,7 +619,7 @@ function buildCharacterInner(def, scale) {
   head.add(nose);
   const smile = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.014, 6, 14, Math.PI), mat('#3a1c14'));
   smile.rotation.z = Math.PI;
-  smile.position.set(0, -0.1, -0.275);
+  smile.position.set(0, -0.1, -0.275 - faceOut);
   smile.scale.z = 0.5;
   head.add(smile);
   buildHat(head, def);
@@ -526,11 +642,16 @@ function buildCharacterInner(def, scale) {
   const arms = {};
   for (const [name, sx] of [['L', -1], ['R', 1]]) {
     const sh = pivot(torsoP, sx * 0.4, 0.56, 0);
-    const upper = cap(0.09, 0.22, top);
+    const upper = cap(0.09, 0.22, varsity ? sleeveMat : top);
     upper.position.y = -0.17;
     sh.add(upper);
+    if (varsity) {
+      const sleeveStripe = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.04, 14), accent);
+      sleeveStripe.position.y = -0.2;
+      sh.add(sleeveStripe);
+    }
     const elbow = pivot(sh, 0, -0.36, 0);
-    const fore = cap(0.08, 0.2, def.belly ? top : skin);
+    const fore = cap(0.08, 0.2, varsity ? sleeveMat : def.belly ? top : skin);
     fore.position.y = -0.15;
     elbow.add(fore);
     const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.088, 0.088, 0.06, 12), accent);
@@ -543,6 +664,14 @@ function buildCharacterInner(def, scale) {
     thumb.position.set(-sx * 0.07, -0.285, -0.045);
     thumb.rotation.set(0.5, 0, -sx * 0.5);
     elbow.add(thumb);
+    if (def.gloves) { // fingerless glove: a dark cuff and a coral back-of-hand guard
+      const cuffG = new THREE.Mesh(new THREE.CylinderGeometry(0.092, 0.092, 0.07, 12), mat('#20242e', { rough: 0.8 }));
+      cuffG.position.y = -0.245;
+      elbow.add(cuffG);
+      const guard = rbox(0.1, 0.06, 0.03, 0.02, mat(def.accent));
+      guard.position.set(0, -0.31, -0.075);
+      elbow.add(guard);
+    }
     if (puffer) { // the sleeve is quilted too: a second puff between shoulder and elbow
       const puff = cap(0.112, 0.06, top);
       puff.position.y = -0.3;
@@ -561,6 +690,11 @@ function buildCharacterInner(def, scale) {
     const shin = cap(0.1, 0.26, pants);
     shin.position.y = -0.22;
     knee.add(shin);
+    if (def.kneePatch && name === 'R') { // a patched knee, like a skater's repaired trouser
+      const patch = rbox(0.15, 0.12, 0.03, 0.025, mat(def.accent));
+      patch.position.set(0, -0.22, -0.11);
+      knee.add(patch);
+    }
     const shoe = rbox(0.22, 0.17, 0.4, 0.07, shoes);
     shoe.position.set(0, -0.44, -0.07);
     knee.add(shoe);

@@ -4,6 +4,7 @@ import * as C from './consts.js';
 import { OUTFITS, BOARDS, TRAILS, SKINS, BAGS, AURAS } from './cosmetics.js';
 import { boardSVG } from './icons.js';
 import { fillIcons } from './iconsax.js';
+import { trackEvent } from './analytics.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -16,8 +17,10 @@ const art = {
   runner(def, size = 120) {
     const top = def.top, acc = def.accent;
     const puff = def.jacket === 'puffer';
+    const varsity = def.jacket === 'varsity';
     const hat = {
       cap: `<path d="M36 40a24 22 0 0 1 48 0z" fill="${def.hatColor}"/><path d="M62 38h30a6 5 0 0 1 0 9H62z" fill="${def.hatColor}" opacity=".9"/>`,
+      bucket: `<path d="M36 40a24 20 0 0 1 48 0z" fill="${def.hatColor}"/><ellipse cx="60" cy="40" rx="34" ry="7" fill="${def.hatColor}"/><rect x="38" y="33" width="44" height="6" rx="3" fill="${acc}"/><circle cx="76" cy="36" r="2" fill="#ffd23f"/>`,
       beanie: `<path d="M36 42a24 24 0 0 1 48 0z" fill="${def.hatColor}"/><circle cx="60" cy="16" r="6" fill="${acc}"/>`,
       santa: `<path d="M36 42a24 24 0 0 1 48 0z" fill="#d6212e"/><rect x="34" y="38" width="52" height="9" rx="4" fill="#fff"/><circle cx="86" cy="26" r="6" fill="#fff"/>`,
       elf: `<path d="M38 42Q60 -6 90 8Q70 28 84 42z" fill="${def.hatColor}"/><circle cx="90" cy="8" r="5" fill="#ffd23f"/>`,
@@ -30,7 +33,9 @@ const art = {
     }[def.hat] || '';
     const body = puff
       ? `<rect x="26" y="70" width="68" height="62" rx="22" fill="${top}"/>${[84, 98, 112].map((y) => `<path d="M28 ${y}Q60 ${y + 7} 92 ${y}" stroke="rgba(0,0,0,.28)" stroke-width="3" fill="none"/>`).join('')}<rect x="52" y="70" width="16" height="62" fill="${acc}" opacity=".55"/><rect x="20" y="78" width="18" height="38" rx="9" fill="${top}"/><rect x="82" y="78" width="18" height="38" rx="9" fill="${top}"/>`
-      : `<rect x="30" y="72" width="60" height="58" rx="18" fill="${top}"/><rect x="24" y="78" width="14" height="34" rx="7" fill="${top}"/><rect x="82" y="78" width="14" height="34" rx="7" fill="${top}"/><rect x="40" y="78" width="40" height="8" rx="4" fill="${acc}"/>`;
+      : varsity
+        ? `<rect x="30" y="72" width="60" height="58" rx="18" fill="${top}"/><rect x="22" y="76" width="16" height="38" rx="8" fill="${def.sleeve || '#f1e6d2'}"/><rect x="82" y="76" width="16" height="38" rx="8" fill="${def.sleeve || '#f1e6d2'}"/><rect x="41" y="76" width="38" height="7" rx="3" fill="${acc}"/><rect x="57" y="72" width="6" height="58" fill="${def.sleeve || '#f1e6d2'}"/><rect x="34" y="116" width="52" height="7" rx="3" fill="${acc}"/><rect x="38" y="84" width="10" height="10" rx="2" fill="${def.sleeve || '#f1e6d2'}"/><circle cx="43" cy="89" r="2" fill="${acc}"/>`
+        : `<rect x="30" y="72" width="60" height="58" rx="18" fill="${top}"/><rect x="24" y="78" width="14" height="34" rx="7" fill="${top}"/><rect x="82" y="78" width="14" height="34" rx="7" fill="${top}"/><rect x="40" y="78" width="40" height="8" rx="4" fill="${acc}"/>`;
     return `<svg viewBox="0 -8 120 150" width="${size}" height="${size * 1.2}" aria-hidden="true">${body}<circle cx="60" cy="52" r="24" fill="${def.skin}"/>${hat}<circle cx="51" cy="54" r="2.6" fill="#1a1a1a"/><circle cx="69" cy="54" r="2.6" fill="#1a1a1a"/><path d="M52 63q8 6 16 0" stroke="#7a3b22" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
   },
   board(c) { return boardSVG(c); },
@@ -59,6 +64,7 @@ export function initHub(ctx) {
   const toastBar = (msg) => { const t = document.createElement('div'); t.className = 'toastbar'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); };
   const serverNow = () => api.serverNow();
   const isOnline = () => !!(api.online.player && api.online.inv);
+  const premBadge = (on, small = false) => (on ? `<span class="prem-badge${small ? ' sm' : ''}" title="Premium account">PREMIUM</span>` : '');
   const defOf = (id) => CHARACTERS.find((c) => c.id === id) || CHARACTERS[0];
 
   // ---------------------------------------------------------------------------- top bar
@@ -67,16 +73,20 @@ export function initHub(ctx) {
     $('mCoins').textContent = fmt(save.coins);
     $('tbLv').textContent = p ? `LV ${p.level}` : 'LV 1';
     $('tbXp').style.width = p ? `${Math.min(100, (p.xpInto / Math.max(1, p.xpNeed)) * 100)}%` : '0%';
-    $('tbName').textContent = p ? p.name : 'Sign in';
+    $('tbName').innerHTML = p ? `${esc(p.name)}${premBadge(p.premium, true)}` : 'Sign in';
     $('tbAvatar').textContent = p ? (p.name[0] || '?').toUpperCase() : '?';
     $('tbAcct').title = p ? (p.hasAccount ? `Signed in as ${p.username}` : 'Guest - create an account to sync your progress') : 'Offline';
     const ev = api.online.events;
     const wf = ev && ev.winterfest, ltm = ev && ev.ltm;
-    $('tbEvBadge').classList.toggle('on', !!(wf && wf.active));
-    $('tbEvBadge').textContent = wf && wf.active ? '!' : '';
+    const seasonActive = !!(ev && ['easter', 'halloween', 'winterfest'].some((id) => ev[id] && ev[id].active));
+    $('tbEvBadge').classList.toggle('on', seasonActive);
+    $('tbEvBadge').textContent = seasonActive ? '!' : '';
     const d = $('btnNeon');
     if (d) d.classList.remove('off'); // the Neon Rush event is playable offline, even when the server is unreachable
-    document.documentElement.classList.toggle('winter', !!(wf && wf.active && save.settings.seasonal !== false));
+    const seasonal = save.settings.seasonal !== false;
+    document.documentElement.classList.toggle('winter', !!(wf && wf.active && seasonal));
+    document.documentElement.classList.toggle('easter', !!(ev && ev.easter && ev.easter.active && seasonal));
+    document.documentElement.classList.toggle('halloween', !!(ev && ev.halloween && ev.halloween.active && seasonal));
   }
   function setTab(t) {
     tab = t;
@@ -90,6 +100,7 @@ export function initHub(ctx) {
     if (t === 'play') { page.classList.add('hidden'); ctx.onPlayTab(); return; }
     page.classList.remove('hidden');
     ctx.onHubOpen();
+    if (t === 'shop' && Date.now() - (open.lastShop || 0) > 60000) { open.lastShop = Date.now(); trackEvent('shop_view'); }
     body.innerHTML = '<div class="empty">Loading…</div>';
     const fn = { shop: pageShop, career: pageCareer, leaderboard: pageBoard, events: pageEvents, updates: pageUpdates, support: pageSupport, account: pageAccount }[t];
     Promise.resolve(fn(my)).catch((e) => { if (my === seq) body.innerHTML = `<div class="empty">Something went wrong (${esc(e.message)}).<br><br><button class="btn sm" id="retry">TRY AGAIN</button></div>`; const r = $('retry'); if (r) r.onclick = () => open(t); });
@@ -188,7 +199,7 @@ export function initHub(ctx) {
         if (it.price >= 5000 && !(await ctx.confirm(`Buy ${itemName(it)} for ${fmt(it.price)} coins?`, { yes: 'BUY', no: 'CANCEL' }))) return;
         b.disabled = true;
         const r = await api.buy(id);
-        if (r && r.json && r.json.ok) { audio.sfx.buy(); ctx.syncEconomy(); toastBar(`${itemName(it)} unlocked!`); if (it.kind === 'cosmetic') await api.equip(it.slot, id.split(':')[1]); ctx.syncEconomy(); }
+        if (r && r.json && r.json.ok) { audio.sfx.buy(); trackEvent('purchase', { meta: { item: id, price: it.price, kind: it.kind, slot: it.slot || null } }); ctx.syncEconomy(); toastBar(`${itemName(it)} unlocked!`); if (it.kind === 'cosmetic') await api.equip(it.slot, id.split(':')[1]); ctx.syncEconomy(); }
         else { audio.sfx.deny(); toastBar(({ not_enough_coins: 'Not enough coins', max_reached: 'Already at the maximum', already_owned: 'You already own this', not_available: 'Not available right now' })[r && r.json && r.json.error] || 'Purchase failed'); }
         ctx.refresh(); open('shop');
       } else {
@@ -266,7 +277,7 @@ export function initHub(ctx) {
     const d = await api.leaderboard(sel.board, sel.period);
     if (!live(my)) return;
     const you = api.online.player ? api.online.player.name : '';
-    const rows = d ? d.rows.map((r) => `<div class="rowx click ${r.name === you ? 'me' : ''}" data-name="${esc(r.name)}"><b class="pos">${r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : '#' + r.rank}</b><b>${esc(r.name)}${r.tag ? `<span class="ptag">#${esc(r.tag)}</span>` : ''}</b>${r.tier ? `<span class="tag2">${r.tier}</span>` : ''}<span class="sp"></span><span class="num">${fmt(r.score)}</span>${r.dist != null ? `<span class="dim">${fmt(r.dist)} m</span>` : `<span class="dim">${r.wins}W / ${r.games}</span>`}</div>`).join('') : '';
+    const rows = d ? d.rows.map((r) => `<div class="rowx click ${r.name === you ? 'me' : ''}" data-name="${esc(r.name)}"><b class="pos">${r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : '#' + r.rank}</b><b>${esc(r.name)}${premBadge(r.premium)}${r.tag ? `<span class="ptag">#${esc(r.tag)}</span>` : ''}</b>${r.tier ? `<span class="tag2">${r.tier}</span>` : ''}<span class="sp"></span><span class="num">${fmt(r.score)}</span>${r.dist != null ? `<span class="dim">${fmt(r.dist)} m</span>` : `<span class="dim">${r.wins}W / ${r.games}</span>`}</div>`).join('') : '';
     const yours = d && d.you ? `<div class="banner" style="padding:12px 18px"><div><h2 style="font-size:24px">Your best</h2><p>${fmt(d.you.score)}${d.you.rank ? ` - rank #${d.you.rank}` : ''}</p></div></div>` : '';
     body.innerHTML = head('LEADERBOARD', 'Click a player to see their profile.')
       + `<div class="subtabs">${BOARDS_L.map(([id, n]) => `<button class="subtab ${sel.board === id ? 'sel' : ''}" data-k="board" data-v="${id}">${n}</button>`).join('')}</div>`
@@ -278,7 +289,7 @@ export function initHub(ctx) {
       click();
       const pr = await api.profileByName(r.dataset.name);
       if (!pr) return;
-      notify(pr.name.toUpperCase(), `${pr.title} - level ${pr.level}\n${pr.tier} ${fmt(pr.rating)} (${pr.wins} wins / ${pr.games} ranked games)\n${(pr.badges || []).length ? 'Badges: ' + pr.badges.map((b) => b.name).join(', ') + '\n' : ''}Best score ${fmt(pr.stats.bestScore)} - ${fmt(pr.stats.runs)} runs - ${fmt(pr.stats.dist)} m\n${pr.stats.achievements} achievements - ${pr.stats.duelWins} duel wins`);
+      notify(`${pr.premium ? 'PREMIUM · ' : ''}${pr.name.toUpperCase()}`, `${pr.title} - level ${pr.level}\n${pr.tier} ${fmt(pr.rating)} (${pr.wins} wins / ${pr.games} ranked games)\n${(pr.badges || []).length ? 'Badges: ' + pr.badges.map((b) => b.name).join(', ') + '\n' : ''}Best score ${fmt(pr.stats.bestScore)} - ${fmt(pr.stats.runs)} runs - ${fmt(pr.stats.dist)} m\n${pr.stats.achievements} achievements - ${pr.stats.duelWins} duel wins`);
     };
   }
 
@@ -293,7 +304,10 @@ export function initHub(ctx) {
     refreshChrome();
     const wf = ev.winterfest, ltm = ev.ltm;
     const cdTarget = wf.active ? wf.endsAt : wf.startsAt;
-    const bannerWinter = `<div class="banner xmas"><div><h2>${esc(wf.name)}</h2><p>${esc(wf.blurb)}</p></div><div class="cd"><small>${wf.active ? 'ENDS IN' : 'STARTS IN'}</small><b data-cd="${cdTarget}">--</b></div></div>`;
+    const giftBtn = (e) => (e.active ? (e.claimed ? '<span class="tag2" style="background:#1fa85a;vertical-align:middle">GIFT CLAIMED</span>' : `<button class="btn go" data-gift="${esc(e.id)}">CLAIM GIFT</button>`) : '');
+    const bannerWinter = `<div class="banner xmas"><div><h2>${esc(wf.name)}</h2><p>${esc(wf.blurb)}</p>${wf.gift ? `<p class="small">Free gift: <b>${esc(wf.gift.label)}</b></p>` : ''}</div><div class="cd"><small>${wf.active ? 'ENDS IN' : 'STARTS IN'}</small><b data-cd="${cdTarget}">--</b></div>${giftBtn(wf)}</div>`;
+    const seasonal = ['easter', 'halloween'].map((id) => ev[id]).filter(Boolean);
+    const bannerSeasonal = seasonal.map((e) => `<div class="banner season ${esc(e.id)}"><div><h2>${esc(e.name)} <span class="tag2" style="background:${e.active ? '#1fa85a' : '#555'};vertical-align:middle">${e.active ? 'LIVE' : 'UPCOMING'}</span></h2><p>${esc(e.blurb)}</p>${e.gift ? `<p class="small">Free gift: <b>${esc(e.gift.label)}</b></p>` : ''}</div><div class="cd"><small>${e.active ? 'ENDS IN' : 'STARTS IN'}</small><b data-cd="${e.active ? e.endsAt : e.startsAt}">--</b></div>${giftBtn(e)}</div>`).join('');
     const bannerLtm = `<div class="banner neon"><div><h2>${esc(ltm.name)} <span class="tag2" style="background:#e0344a;vertical-align:middle">LIMITED TIME</span></h2><p>${esc(ltm.desc)}</p></div>${ltm.active ? `<div class="cd"><small>${ltm.endsAt ? 'ROTATES IN' : ''}</small><b ${ltm.endsAt ? `data-cd="${ltm.endsAt}"` : ''}>${ltm.endsAt ? '--' : 'LIVE'}</b></div><button class="btn neon" id="playNeon">PLAY NOW</button>` : '<div class="cd"><small>NEXT WINDOW</small><b>Fri 18:00 UTC</b></div>'}</div>`;
     let doors = '';
     if (adv && adv.active) {
@@ -305,7 +319,7 @@ export function initHub(ctx) {
       const top = t.rewards[0];
       return `<div class="banner tourn ${t.kind}"><div><h2>${esc(t.name)} <span class="tag2" style="background:${t.state === 'live' ? '#1fa85a' : '#555'};vertical-align:middle">${t.state === 'live' ? 'LIVE' : 'UPCOMING'}</span></h2><p>${esc(t.blurb)}</p><p class="small">Winner: ${prize(top)}</p>${t.mine ? `<p class="small">Your best: <b>${fmt(t.mine.score)}</b> (rank #${t.mine.rank})</p>` : ''}</div><div class="cd"><small>${t.state === 'live' ? 'ENDS IN' : 'STARTS IN'}</small><b data-cd="${t.state === 'live' ? t.end : t.start}">--</b>${t.state === 'live' ? `<button class="btn sm" data-tb="${esc(t.id)}">RANKING</button>` : ''}</div></div>`;
     }).join('') : '');
-    body.innerHTML = head('EVENTS', 'Limited-time content, same clock for every player.') + tcards + bannerWinter + bannerLtm + doors;
+    body.innerHTML = head('EVENTS', 'Limited-time content, same clock for every player.') + bannerSeasonal + bannerWinter + bannerLtm + tcards + doors; // seasons first: tournaments used to hide them below the fold
     for (const b of body.querySelectorAll('[data-tb]')) b.onclick = async () => {
       click(); const d = await api.tournament(b.dataset.tb);
       if (!d) { toastBar('Could not load the ranking'); return; }
@@ -314,6 +328,13 @@ export function initHub(ctx) {
     const tick = () => { for (const el of body.querySelectorAll('[data-cd]')) el.textContent = dur(Number(el.dataset.cd) - serverNow()); };
     tick(); timers.push(setInterval(tick, 1000));
     const pd = $('playNeon'); if (pd) pd.onclick = () => { click(); ctx.startNeon(); };
+    for (const b of body.querySelectorAll('[data-gift]')) b.onclick = async () => {
+      click(); b.disabled = true;
+      const r = await api.claimEventGift(b.dataset.gift);
+      b.disabled = false;
+      if (r && r.json && r.json.ok) { audio.sfx.mission(); ctx.syncEconomy(); toastBar(`Gift: ${r.json.reward.label}`); open('events'); }
+      else { audio.sfx.deny(); toastBar(({ already_claimed: 'Gift already claimed', event_not_active: 'This event is not live yet' })[r && r.json && r.json.error] || 'Could not claim the gift'); }
+    };
     for (const d of body.querySelectorAll('.door.open')) d.onclick = async () => {
       const r = await api.claimAdvent(Number(d.dataset.day));
       if (r && r.json && r.json.ok) { audio.sfx.mission(); ctx.syncEconomy(); ctx.refresh(); toastBar(`Door ${d.dataset.day}: ${r.json.reward.label}`); if (r.json.achievements.length) toastBar(`Achievement: ${r.json.achievements[0].name}`); open('events'); }
@@ -456,8 +477,26 @@ export function initHub(ctx) {
     if (!p.hasAccount) { accountForms('register'); return; }
     const cloud = ctx.cloudStatus();
     body.innerHTML = head('ACCOUNT', 'Signed in - your progress is saved on the server.')
-      + `<div class="stats4"><div class="stat4"><small>Username</small><b style="font-size:22px">${esc(p.username)}</b></div><div class="stat4"><small>Display name</small><b style="font-size:22px">${esc(p.name)}</b></div><div class="stat4"><small>Cloud sync</small><b style="font-size:22px">${esc(cloud)}</b></div><div class="stat4"><small>Rank</small><b style="font-size:22px">${p.tier} ${fmt(p.rating)}</b></div></div>`
+      + `<div class="stats4"><div class="stat4"><small>Username</small><b style="font-size:22px">${esc(p.username)}</b></div><div class="stat4"><small>Display name</small><b style="font-size:22px">${esc(p.name)}${premBadge(p.premium)}</b></div><div class="stat4"><small>Cloud sync</small><b style="font-size:22px">${esc(cloud)}</b></div><div class="stat4"><small>Rank</small><b style="font-size:22px">${p.tier} ${fmt(p.rating)}</b></div></div>`
+      + (p.premium
+        ? `<div class="banner prem-banner"><div><h2>${premBadge(true)} Premium unlocked</h2><p>Every cosmetic in the game is in your inventory, including event and tournament exclusives. Your badge follows your name on leaderboards.</p></div></div>`
+        : `<div class="formbox" style="max-width:720px;margin-top:14px"><h2>REDEEM A CODE</h2><p class="stage-note">Premium codes unlock every cosmetic in the game and the PREMIUM badge. One code per account.</p><div class="row" style="justify-content:flex-start"><input class="txt" id="codeInput" maxlength="24" placeholder="RS2-XXXX-XXXX" autocomplete="off" spellcheck="false"><button class="btn go" id="codeGo">REDEEM</button></div><div class="err" id="codeErr"></div></div>`)
       + '<div class="row" style="justify-content:flex-start"><button class="btn sm" id="acName">CHANGE NAME</button><button class="btn sm" id="acPw">CHANGE PASSWORD</button><button class="btn sm" id="acSync">SYNC NOW</button><button class="btn sm" id="acAll">SIGN OUT EVERYWHERE</button><button class="btn sm red" id="acOut">SIGN OUT</button></div>';
+    const codeGo = $('codeGo');
+    if (codeGo) {
+      const submit = async () => {
+        const input = $('codeInput'), err = $('codeErr');
+        const code = input.value.trim();
+        if (!code) { err.textContent = 'Enter a code first'; input.focus(); return; }
+        codeGo.disabled = true; err.textContent = '';
+        const r = await api.redeemCode(code);
+        codeGo.disabled = false;
+        if (r && r.status === 200) { audio.sfx.mission(); toastBar('Premium unlocked - every cosmetic is now yours'); ctx.syncEconomy(); open('account'); }
+        else { audio.sfx.deny(); err.textContent = (r && r.json && (r.json.message || r.json.error)) || 'Could not reach the server'; }
+      };
+      codeGo.onclick = submit;
+      $('codeInput').onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') submit(); };
+    }
     $('acName').onclick = () => ctx.rename().then(() => open('account'));
     $('acPw').onclick = async () => {
       const old = await dialog({ title: 'CURRENT PASSWORD', input: { password: true, max: 72, placeholder: 'Current password' }, yes: 'NEXT' }); if (!old) return;

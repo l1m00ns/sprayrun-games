@@ -1,4 +1,4 @@
-// Trains & difficulty: solid trains (no roofs, no walking through), side bumps, hoverboard clears the train, longer oncoming trains,
+// Trains & difficulty: solid sides, landable roofs, side bumps, hoverboard clears the train, longer oncoming trains,
 // corridors, and the pro bot's survival on the harder generator.   node tools/trains.mjs
 import { startServer, launch, openGame } from './lib.mjs';
 const srv = await startServer(4200 + Math.floor(Math.random() * 40), { AI_DISABLED: '1' });
@@ -53,7 +53,7 @@ const coinCheck = await page.evaluate(() => {
 });
 ok(coinCheck.bad === 0, 'no coin is generated inside a wall', JSON.stringify(coinCheck));
 
-// ---- 3. a train is a solid wall: running into it is a crash, the roof cannot be stood on
+// ---- 3. a train front is still a solid wall: running into it ends the run (the roof is landable, the front is not)
 const t1 = await page.evaluate(() => {
   const put = (g, lane, wz, cars, vz = 0) => { const segs = g.world.segs; const seg = segs.find((s) => s.z - 64.8 <= wz && wz <= s.z) || segs[0]; return g.world.placeTrain(seg, lane, wz - seg.z, cars, false, 'city', vz); };
   const g = window.__game;
@@ -65,10 +65,9 @@ const t1 = await page.evaluate(() => {
   const r = g.sim(12);
   return { state: r.state, reason: r.reason, roof: r.roof, info: r.info };
 });
-ok(t1.state !== 'playing' || t1.reason, 'running into a train ends the run (or stumbles into the guard)', JSON.stringify(t1));
-ok(t1.roof === 0, 'nobody stood on a roof', `roofFrames=${t1.roof}`);
+ok(t1.state !== 'playing' || t1.reason, 'running into a train front ends the run (or stumbles into the guard)', JSON.stringify(t1));
 
-// ---- 3. Super Sneakers: landing on a roof is a crash, not a walk
+// ---- 3. Super Sneakers: landing on a roof is a walk, not a crash
 const t2 = await page.evaluate(() => {
   const put = (g, lane, wz, cars, vz = 0) => { const segs = g.world.segs; const seg = segs.find((s) => s.z - 64.8 <= wz && wz <= s.z) || segs[0]; return g.world.placeTrain(seg, lane, wz - seg.z, cars, false, 'city', vz); };
   const g = window.__game;
@@ -88,7 +87,7 @@ const t2 = await page.evaluate(() => {
   }
   return { onRoof, maxY: +maxY.toFixed(2), state: g.state };
 });
-ok(t2.onRoof === 0, 'a sneaker jump never turns into walking on the roof', JSON.stringify(t2));
+ok(t2.state === 'playing' || t2.onRoof > 0, 'a sneaker jump onto a roof no longer ends the run', JSON.stringify(t2));
 
 // ---- 4. hoverboard: the board takes the hit AND the train is removed (no riding inside it)
 const t3 = await page.evaluate(() => {
@@ -125,7 +124,7 @@ ok(t4.x < 1.0 && (t4.kind === 'side' || t4.state !== 'playing'), 'a side swipe b
 // ---- 6. pro bot on the harder generator (not invincible), several maps, late-game difficulty
 for (const [map, skip] of [['city', 3000], ['tropic', 3000], ['neon', 6000], ['desert', 9000]]) {
   const res = await page.evaluate(({ m, k }) => { const g = window.__game; g.cheats.bot = true; g.cheats.botGod = false; g.cheats.startPct = 80; g.setMap(m); g.start(); g.fastForward(k); return g.sim(70); }, { m: map, k: skip });
-  ok(res.state === 'playing' && res.roof === 0, `pro bot survives 70 s on ${map} after ${skip} m of difficulty`, `dist=${res.dist} coins=${res.coins} reason=${res.reason} events=${(res.events||[]).join(',')} info=${res.info}`);
+  ok(res.state === 'playing', `pro bot survives 70 s on ${map} after ${skip} m of difficulty`, `dist=${res.dist} coins=${res.coins} roof=${res.roof} reason=${res.reason} events=${(res.events||[]).join(',')} info=${res.info}`);
   await page.evaluate(() => { window.__game.cheats.bot = false; try { window.__game.die('manual'); } catch (e) { /* over */ } });
   await new Promise((r) => setTimeout(r, 300));
   await page.evaluate(() => { const b = document.getElementById('btnHome'); if (b) b.click(); });

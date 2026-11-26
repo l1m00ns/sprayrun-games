@@ -72,7 +72,20 @@ export function leaderboard(id, me) {
 }
 export function overview(me) {
   settleAll();
-  const t = nowMs(), list = windows(t).filter((w) => w.state !== 'ended' || t - w.end < 6 * H).map((w) => {
+  const t = nowMs();
+  // One card per tournament kind: the live window if there is one, otherwise the next one, otherwise the one that
+  // just finished (6 h). Showing live + upcoming + previous at once produced three "Daily Sprint" cards in a row.
+  const all = windows(t);
+  const chosen = [];
+  for (const kind of ['daily', 'weekly']) {
+    const of = all.filter((w) => w.kind === kind);
+    const live = of.find((w) => w.state === 'live');
+    const next = of.find((w) => w.state === 'upcoming');
+    const done = of.filter((w) => w.state === 'ended' && t - w.end < 6 * H).pop();
+    const w = live || next || done;
+    if (w) chosen.push(w);
+  }
+  const list = chosen.sort((a, b) => a.start - b.start).map((w) => {
     const base = { id: w.id, kind: w.kind, name: w.name, blurb: KINDS[w.kind].blurb, start: w.start, end: w.end, state: w.state, rewards: rewardPreview(w.kind) };
     if (me && w.state !== 'upcoming') { const s = st.mine.get(w.start, Math.min(w.end, t + 1), me.id).score; if (s != null) base.mine = { score: s, rank: st.above.get(w.start, Math.min(w.end, t + 1), s).n + 1 }; }
     return base;

@@ -61,10 +61,12 @@ export const CARRIAGE_LEN = 11;
 export const CARRIAGE_GAP = 0.35;
 export const TRAIN_W = 1.9;
 export const TRAIN_BOTTOM = 0.5;
-export const TRAIN_H = 3.7; // roof must stay above the jump apex (JUMP_H + STEP_TOL) so trains can't be hopped
-// Trains and containers are solid walls: no ramps, nobody stands or runs on a roof. Landing on one (Super Sneakers) is a crash;
-// the Jetpack flies above them. Flip to true to get the old roof-running back (ramps + roof coins).
+export const TRAIN_H = 3.35; // low enough to land on with a normal jump (JUMP_H 3.22 + STEP_TOL 0.42)
+// Trains and containers are solid from the side. Their roofs are still landable (a Super Sneakers jump reaches
+// them), but there are no ramps and no roof coin lines any more: the only way up is the high jump.
+// ROOF_LAND was split from ROOF_RUN so the generator can keep roofs useful without rebuilding the old ramp route.
 export const ROOF_RUN = false;
+export const ROOF_LAND = true;
 
 export const LOW_H = 1.0;
 export const OVERHEAD_BOTTOM = 1.15;

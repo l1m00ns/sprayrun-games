@@ -107,7 +107,7 @@ export function listFriends(me) {
     const p = q.getPlayer.get(pid);
     if (!p) return null;
     const party = partyByPid.get(pid);
-    return { id: p.id, name: p.name, rating: Math.round(p.rating), tier: tierOf(p.rating), presence: presenceOf(pid), partySize: party ? party.members.size : 0, joinable: !!party && party.members.size < PARTY_MAX && party.state === 'idle', ...extra };
+    return { id: p.id, name: p.name, premium: !!p.premium, rating: Math.round(p.rating), tier: tierOf(p.rating), presence: presenceOf(pid), partySize: party ? party.members.size : 0, joinable: !!party && party.members.size < PARTY_MAX && party.state === 'idle', ...extra };
   };
   const friends = st.friends.all(me.id).map((r) => card(r.pid)).filter(Boolean)
     .sort((a, b) => (a.presence === 'offline') - (b.presence === 'offline') || a.name.localeCompare(b.name));
@@ -141,7 +141,7 @@ export function cleanSpec(s) {
 function view(party) {
   return {
     t: 'party', id: party.id, leader: party.leader, state: party.state, spec: party.spec, max: PARTY_MAX,
-    members: [...party.members.values()].map((m) => { const p = q.getPlayer.get(m.pid); return { id: m.pid, name: m.name, char: m.char, rating: p ? Math.round(p.rating) : 1000, tier: p ? tierOf(p.rating) : 'Bronze', online: m.ws.readyState === 1 }; }),
+    members: [...party.members.values()].map((m) => { const p = q.getPlayer.get(m.pid); return { id: m.pid, name: m.name, char: m.char, premium: !!(p && p.premium), rating: p ? Math.round(p.rating) : 1000, tier: p ? tierOf(p.rating) : 'Bronze', online: m.ws.readyState === 1 }; }),
   };
 }
 export function pushParty(party) { const v = view(party); for (const m of party.members.values()) send(m.ws, v); }

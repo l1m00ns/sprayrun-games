@@ -2,9 +2,9 @@
 import { q } from './db.mjs';
 import { reply, readJson, authPlayer, clientIp } from './http.mjs';
 import { register, login, changePassword, signOutEverywhere, getCloud, putCloud, nameProblem, cleanName } from './accounts.mjs';
-import { shopView, buy, equip, claimAdvent, adventView, importLocal, stateOf, invOf } from './economy.mjs';
+import { shopView, buy, equip, claimAdvent, adventView, claimEventGift, importLocal, stateOf, invOf } from './economy.mjs';
 import { profile, careerOf, accessProblem, ban, kick, sockets } from './players.mjs';
-import { eventStatus, ltmStatus, nowMs, ACHIEVEMENTS, levelOf, titleOf, COSMETICS, RUNNERS, dailyInfo } from './catalog.mjs';
+import { eventStatus, allEvents, ltmStatus, nowMs, ACHIEVEMENTS, levelOf, titleOf, COSMETICS, RUNNERS, dailyInfo } from './catalog.mjs';
 import { UPDATES } from './updates.mjs';
 import { aiStatus } from './ai.mjs';
 import * as support from './support.mjs';
@@ -15,6 +15,7 @@ import * as messages from './messages.mjs';
 import * as privacy from './privacy.mjs';
 import * as tournaments from './tournaments.mjs';
 import * as ipintel from './ipintel.mjs';
+import { redeem } from './codes.mjs';
 import { playerStats, globalStats } from './stats.mjs';
 import { rankedMinSeconds, BADGES } from './catalog.mjs';
 
@@ -86,7 +87,7 @@ export async function routeV2(req, res, url, me, route) {
   // ---------------------------------------------------------------------------------- me / profile
   if (route === 'GET /api/me') {
     if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }
-    reply(res, 200, { ...full(me), daily: dailyInfo(), events: { winterfest: eventStatus('winterfest'), ltm: ltmStatus() }, serverTime: nowMs() });
+    reply(res, 200, { ...full(me), daily: dailyInfo(), events: { ...allEvents(), ltm: ltmStatus() }, serverTime: nowMs() });
     return true;
   }
   if (route === 'POST /api/me') {
@@ -97,6 +98,14 @@ export async function routeV2(req, res, url, me, route) {
     if (np || name.length < 2) { reply(res, 400, { error: 'bad_name', message: np || 'At least 2 characters' }); return true; }
     q.rename.run(name, me.id);
     reply(res, 200, full(q.getPlayer.get(me.id)));
+    return true;
+  }
+  if (route === 'POST /api/codes/redeem') {
+    if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }
+    const body = await readJson(req, 600);
+    const r = redeem(me.id, body.code);
+    if (!r.ok) { reply(res, 400, r); return true; }
+    reply(res, 200, { ...r, ...full(q.getPlayer.get(me.id)) });
     return true;
   }
   if (route === 'GET /api/career') {
@@ -113,7 +122,7 @@ export async function routeV2(req, res, url, me, route) {
   }
 
   // ---------------------------------------------------------------------------------------- shop
-  if (route === 'GET /api/shop') { if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; } reply(res, 200, { ...shopView(me), events: { winterfest: eventStatus('winterfest') } }); return true; }
+  if (route === 'GET /api/shop') { if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; } reply(res, 200, { ...shopView(me), events: allEvents() }); return true; }
   if (route === 'POST /api/shop/buy') {
     if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }
     const body = await readJson(req, 512);
@@ -130,7 +139,19 @@ export async function routeV2(req, res, url, me, route) {
   }
 
   // ------------------------------------------------------------------------ events / advent / updates
-  if (route === 'GET /api/events') { reply(res, 200, { winterfest: eventStatus('winterfest'), ltm: ltmStatus(), serverTime: nowMs() }); return true; }
+  if (route === 'GET /api/events') {
+    const events = allEvents();
+    if (me) for (const e of Object.values(events)) e.claimed = !!q.eventClaim.get(me.id, e.id, e.year);
+    reply(res, 200, { ...events, ltm: ltmStatus(), serverTime: nowMs() });
+    return true;
+  }
+  if (route === 'POST /api/events/claim') {
+    if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }
+    const body = await readJson(req, 256);
+    const r = claimEventGift(me.id, String(body.event || ''));
+    reply(res, r.ok ? 200 : 400, r);
+    return true;
+  }
   if (route === 'GET /api/advent') { if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; } reply(res, 200, { ...adventView(me.id), serverTime: nowMs() }); return true; }
   if (route === 'POST /api/advent/claim') {
     if (!me) { reply(res, 401, { error: 'unauthorized' }); return true; }
@@ -266,7 +287,7 @@ function publicProfile(p) {
   const c = careerOf(p);
   const lv = levelOf(p.xp);
   return {
-    name: p.name, since: p.created, level: lv.level, title: titleOf(lv.level), rating: Math.round(p.rating), tier: profile(p, false).tier, games: p.games, wins: p.wins,
+    name: p.name, since: p.created, level: lv.level, title: titleOf(lv.level), rating: Math.round(p.rating), tier: profile(p, false).tier, games: p.games, wins: p.wins, premium: !!p.premium,
     stats: { runs: c.runs, dist: c.dist, bestScore: c.bestScore, bestDist: c.bestDist, rankedWins: c.rankedWins, duelWins: c.duelWins, achievements: c.ach.length },
     equipped: invOf(p).equip, badges: (c.badges || []).map((id) => ({ id, ...(BADGES[id] || { name: id }) })),
   };

@@ -12,6 +12,12 @@
 .tb-tab:hover { color: #fff; }
 .tb-tab.sel { color: var(--yellow); }
 .tb-tab.sel::after { transform: scaleX(1); }
+/* premium: small gold plaque next to a player's name, readable on every panel */
+.prem-badge { display: inline-block; margin-left: 7px; padding: 1px 7px 2px; border-radius: 6px; background: linear-gradient(180deg, #ffe27a, #ffb000); color: #3a2200; font: 800 10px/1.5 var(--body); letter-spacing: .7px; vertical-align: 2px; box-shadow: 0 1px 0 #8a5a00; white-space: nowrap; }
+.prem-badge.sm { margin-left: 6px; padding: 0 5px; font-size: 9px; vertical-align: 1px; }
+.prem-banner { border-color: rgba(255,210,63,.55); background: linear-gradient(100deg, rgba(255,210,63,.14), rgba(255,159,28,.06)); }
+.prem-banner .prem-badge { margin-left: 0; }
+
 /* the badge sits after the label (it used to overlap the last letters of UPDATES) */
 .tb-badge { display: none; min-width: 18px; height: 18px; margin-left: 6px; padding: 0 6px; border-radius: 99px; background: var(--pink); color: #fff; font: 700 12px/18px var(--body); letter-spacing: .4px; text-align: center; font-style: normal; vertical-align: 3px; }
 .tb-badge.on { display: inline-block; }
@@ -315,33 +321,37 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 7px; border-radius: 7
 .pslot:hover u { opacity: 1; }
 .pleave { background: none; border: 0; color: rgba(255,255,255,.7); font: 700 13px var(--body); cursor: pointer; text-decoration: underline; margin-left: 6px; }
 /* picker */
-#mpBody { max-height: 62vh; overflow-y: auto; padding-right: 4px; }
+#modePick .mp-panel { position: relative; display: flex; flex-direction: column; height: min(94vh, 860px); max-height: min(94vh, 860px); overflow: hidden; }
+#modePick .mp-panel h2 { flex: none; }
+#mpCats { flex: none; }
+#mpBody.more { -webkit-mask-image: linear-gradient(#000 calc(100% - 14px), transparent); mask-image: linear-gradient(#000 calc(100% - 14px), transparent); }
+#mpBody { flex: 1 1 0; min-height: 0; max-height: none; overflow-y: auto; padding: 0 8px 22px 0; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.35) transparent; }
+#mpBody::-webkit-scrollbar { display: block; width: 9px; }
+#mpBody::-webkit-scrollbar-thumb { background: rgba(255,255,255,.3); border-radius: 9px; }
+#mpBody::-webkit-scrollbar-track { background: transparent; }
+#modePick .mp-close-row { flex: none; position: relative; z-index: 1; margin-top: 14px; }
 #mpBody h4, #frBody h4 { margin: 14px 0 8px; font: 400 18px var(--font); color: var(--yellow); letter-spacing: .5px; }
 .mp-rules { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; } .mp-rules > span { font: 400 18px var(--font); } .mp-rules small { flex: 1; min-width: 200px; opacity: .75; font-weight: 600; }
 .seg { display: inline-flex; border-radius: 99px; background: rgba(255,255,255,.08); border: 2px solid var(--line); overflow: hidden; }
 .seg button { padding: 6px 16px; border: 0; background: none; color: #fff; font: 400 16px var(--font); cursor: pointer; } .seg button.sel { background: var(--yellow); color: #3a2400; }
 /* picker: category tabs, a large preview, then the cards of that category */
-.mp-cats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.mp-cats { display: flex; gap: 8px; row-gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .mp-cat { display: inline-flex; align-items: center; gap: 7px; padding: 7px 16px; border-radius: 99px; border: 2px solid var(--line); background: rgba(255,255,255,.06); color: #fff; font: 400 17px var(--font); cursor: pointer; transition: background .12s, border-color .12s; }
 .mp-cat i { font: 700 11px/17px var(--body); font-style: normal; min-width: 18px; padding: 0 5px; border-radius: 99px; background: rgba(0,0,0,.35); text-align: center; opacity: .85; }
 .mp-cat:hover { border-color: rgba(255,255,255,.5); } .mp-cat.sel { background: var(--yellow); border-color: var(--yellow); color: #3a2400; } .mp-cat.sel i { background: rgba(0,0,0,.22); }
 .mp-head { display: flex; flex-direction: column; }
-.mp-now { display: flex; gap: 16px; align-items: center; padding: 12px; margin-bottom: 14px; border-radius: 18px; background: linear-gradient(110deg, rgba(255,255,255,.09), rgba(255,255,255,.03)); border: 2px solid var(--line); }
-.mp-now .mart { width: 210px; flex: none; border-radius: 14px; }
-.mp-now-txt { min-width: 0; } .mp-now-txt small { opacity: .7; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
-.mp-now-txt h3 { margin: 2px 0 4px; font: 400 30px/1.1 var(--font); } .mp-now-txt p { margin: 0 0 8px; opacity: .8; font-weight: 600; max-width: 52ch; }
-.mp-tags { display: flex; gap: 6px; flex-wrap: wrap; } .mp-tags .chip { padding: 2px 10px; border-radius: 99px; background: rgba(255,255,255,.12); font: 700 12px/18px var(--body); }
-.mp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.mp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
 .mp-card { position: relative; display: flex; flex-direction: column; text-align: left; padding: 0 0 12px; border-radius: 16px; border: 3px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #fff; cursor: pointer; overflow: hidden; transition: transform .12s, border-color .15s, background .15s; }
 .mp-card:hover:not(.off) { transform: translateY(-3px); border-color: rgba(255,255,255,.55); background: rgba(255,255,255,.1); } .mp-card.sel { border-color: var(--yellow); box-shadow: 0 0 0 2px rgba(255,210,63,.3), 0 8px 18px rgba(0,0,0,.25); }
-.mp-card .mart { width: 100%; height: auto; aspect-ratio: 8 / 5; display: block; }
-.mp-card b { padding: 8px 12px 0; font: 400 21px/1.1 var(--font); } .mp-card small { padding: 2px 12px 0; opacity: .75; font-weight: 600; }
+.mp-card .mart { width: 100%; height: auto; aspect-ratio: 16 / 9; display: block; }
+.mp-card b { padding: 8px 12px 0; font: 400 21px/1.1 var(--font); } .mp-card small { padding: 2px 12px 0; min-height: 2.5em; opacity: .75; font-weight: 600; }
+.mp-rules { margin-top: 12px; }
 .mp-badge { position: absolute; top: 8px; left: 8px; padding: 1px 10px; border-radius: 99px; background: rgba(0,0,0,.5); font: 700 11px/19px var(--body); letter-spacing: .5px; }
 .mp-badge.off { background: rgba(224,52,74,.85); }
 .mp-tick { position: absolute; top: 6px; right: 8px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--yellow); color: #3a2400; font: 700 15px/1 var(--body); box-shadow: 0 2px 6px rgba(0,0,0,.4); }
 .mp-card.off { opacity: .55; cursor: not-allowed; } .mp-lock { position: absolute; inset: 0 0 auto 0; height: calc(100% - 58px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 10px; background: rgba(6,10,30,.66); text-align: center; line-height: 1.2; } .mp-lock i { font: 600 12px var(--body); font-style: normal; }
 .mp-foot { display: flex; justify-content: flex-end; margin: 14px 0 2px; }
-@media (max-width: 640px) { .mp-now { display: none; } /* the cards already show the art: keep the phone picker short */ .mp-grid { grid-template-columns: 1fr 1fr; } .mp-cat { font-size: 15px; padding: 6px 12px; } }
+@media (max-width: 640px) { .mp-grid { grid-template-columns: 1fr 1fr; gap: 12px; } .mp-cat { font-size: 15px; padding: 6px 12px; } }
 /* friends */
 .fr-top { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
 .fr-code { display: flex; align-items: center; gap: 10px; } .fr-code small { opacity: .75; font-weight: 600; } .fr-code b { font: 400 26px var(--font); letter-spacing: 3px; color: var(--yellow); user-select: text; }
@@ -470,7 +480,8 @@ button svg[aria-hidden], .icon-btn svg { display: block; }
   #partyStrip .pslot { width: 44px; height: 44px; } #partyStrip .pslot b { display: none; }
   #hubpage { bottom: calc(60px + env(safe-area-inset-bottom)); }
   .panel { width: 96vw !important; max-height: 88vh; padding: 16px 14px 18px; }
-  .mp-grid { grid-template-columns: 1fr 1fr; gap: 10px; } .mp-card b { font-size: 18px; } #mpBody { max-height: 62vh; }
+  #modePick .mp-panel h2 { font-size: 32px; margin-bottom: 10px; } .mp-cats { margin-bottom: 10px; }
+  .mp-grid { grid-template-columns: 1fr 1fr; gap: 8px; } .mp-card b { font-size: 18px; } .mp-card small { min-height: 2.15em; } #mpBody { max-height: none; padding-bottom: 8px; } #modePick .mp-panel { height: 94vh; max-height: 94vh; }
   .fr-top { flex-direction: column; align-items: stretch; } .fr-add input { flex: 1; width: auto; } .fr-add { width: 100%; } .fr-row { flex-wrap: wrap; } .fr-row .pres { flex-basis: 100%; order: 5; }
   #h-boardBtn { width: 76px; height: 76px; bottom: calc(24px + env(safe-area-inset-bottom)); right: 12px; } #h-boardBtn .board-ic svg { width: 50px; height: 50px; }
   #h-score .n { font-size: 40px; }

@@ -9,7 +9,8 @@ const startedAt = Date.now();
 const GROUPS = [
   ['Status', ['GET /api/health', 'GET /api/vpn', 'GET /api/events', 'GET /api/updates']],
   ['Accounts', ['POST /api/auth/guest', 'POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/password', 'POST /api/auth/signout-all', 'GET /api/me', 'POST /api/me', 'GET|PUT /api/save']],
-  ['Economy', ['GET /api/shop', 'POST /api/shop/buy', 'POST /api/shop/equip', 'GET /api/advent', 'POST /api/advent/claim']],
+  ['Economy', ['GET /api/shop', 'POST /api/shop/buy', 'POST /api/shop/equip', 'GET /api/advent', 'POST /api/advent/claim', 'POST /api/codes/redeem']],
+  ['Events', ['GET /api/events', 'POST /api/events/claim']],
   ['Runs and ranking', ['POST /api/run/start', 'POST /api/run/finish', 'GET /api/leaderboard', 'GET /api/profile', 'GET /api/career', 'GET /api/stats', 'GET /api/stats/global']],
   ['Support and appeals', ['GET|POST /api/support', 'GET /api/support/status', 'GET|POST /api/support/tickets', 'GET|POST /api/appeals']],
   ['Realtime', ['WebSocket /ws (ranked queue, rooms, Gold Rush duel)']],

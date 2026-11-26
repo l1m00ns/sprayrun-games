@@ -167,7 +167,7 @@ export default function GameUI() {
           <div className="tabs" id="secTabs"></div>
           <div id="secBody"></div>
           <div className="row"><button className="btn sm" id="secReset">RESET ALL</button><button className="btn sm green hidden" id="secUnload">UNLOAD - PLAY ONLINE</button><span className="sec-hint"><kbd>²</kbd> open / close &nbsp; <kbd>Esc</kbd> close</span><button className="btn go" id="secClose">CLOSE</button></div></div></div>
-        <div id="modePick" className="screen modal hidden"><div className="panel" style={{ width: 'min(96vw,900px)' }}><h2 className="ink">GAME MODE</h2><div id="mpBody"></div><div className="row"><button className="btn go" id="mpClose">CLOSE</button></div></div></div>
+        <div id="modePick" className="screen modal hidden"><div className="panel mp-panel" style={{ width: 'min(96vw,900px)' }}><h2 className="ink">GAME MODE</h2><div id="mpCats"></div><div id="mpBody"></div><div className="row mp-close-row"><button className="btn go" id="mpClose">CLOSE</button></div></div></div>
         <div id="friends" className="screen modal hidden"><div className="panel" style={{ width: 'min(94vw,680px)' }}><h2 className="ink">FRIENDS</h2><div id="frBody"></div><div className="row"><button className="btn go" id="frClose">CLOSE</button></div></div></div>
         <div id="searchOv" className="screen modal hidden"><div className="panel" style={{ width: 'min(92vw,520px)' }}><div id="soBody"></div><div className="row"><button className="btn red" id="soCancel">CANCEL</button><button className="btn sm" id="soOffline" style={{ display: 'none' }}>PLAY OFFLINE INSTEAD</button></div></div></div>
         <div id="duelhud" className="hidden">

@@ -66,6 +66,8 @@ export const login = async (username, password) => adoptAuth(await call('POST', 
 export async function logout() { online.token = null; online.player = null; online.wallet = 0; online.inv = null; save.account = null; persist(); }
 export const changePassword = async (old, nw) => { const r = await call('POST', '/api/auth/password', { old, new: nw }); if (r && r.status === 200) { online.token = r.json.token; save.account = { token: online.token }; persist(); } return r; };
 export const signOutEverywhere = async () => { const r = await call('POST', '/api/auth/signout-all'); if (r && r.status === 200) { online.token = r.json.token; save.account = { token: online.token }; persist(); } return r; };
+// Premium codes: the server validates the code, marks it used and grants every cosmetic + the badge.
+export async function redeemCode(code) { const r = await call('POST', '/api/codes/redeem', { code }); if (r && r.status === 200) adopt(r.json); return r; }
 export const getCloud = () => call('GET', '/api/save');
 export const putCloud = (ver, data) => call('PUT', '/api/save', { ver, data });
 
@@ -75,7 +77,8 @@ export async function buy(item) { const r = await call('POST', '/api/shop/buy', 
 export async function equip(slot, id) { const r = await call('POST', '/api/shop/equip', { slot, id }); if (r && r.json && r.json.ok) adopt(r.json); return r; }
 export const career = async () => { const r = await call('GET', '/api/career'); return r && r.status === 200 ? r.json : null; };
 export const profileByName = async (name) => { const r = await call('GET', '/api/profile?name=' + encodeURIComponent(name)); return r && r.status === 200 ? r.json : null; };
-export const events = async () => { const r = await call('GET', '/api/events', null, false); if (r && r.status === 200) { online.events = r.json; online.serverOffset = r.json.serverTime - Date.now(); return r.json; } return null; };
+export const events = async () => { const r = await call('GET', '/api/events', null, true); if (r && r.status === 200) { online.events = r.json; online.serverOffset = r.json.serverTime - Date.now(); return r.json; } return null; };
+export async function claimEventGift(event) { const r = await call('POST', '/api/events/claim', { event }); if (r && r.json && r.json.ok) adopt(r.json); return r; }
 export const advent = async () => { const r = await call('GET', '/api/advent'); if (r && r.status === 200) { online.serverOffset = r.json.serverTime - Date.now(); return r.json; } return null; };
 export async function claimAdvent(day) { const r = await call('POST', '/api/advent/claim', { day }); if (r && r.json && r.json.ok) adopt(r.json); return r; }
 export const tournaments = async () => { const r = await call('GET', '/api/tournaments'); return r && r.status === 200 ? r.json : null; };

@@ -1,6 +1,18 @@
 // Update history shown in the game's "Updates" tab. Newest first. Edit this file when you ship something.
 export const UPDATES = [
   {
+    version: '2.0.0', date: '2026-11-26', title: 'Premium codes, four seasons, HDRI',
+    tags: ['major', 'content', 'events'],
+    notes: [
+      'Premium codes: 100 single-use codes unlock every cosmetic in the game and a gold PREMIUM badge beside your name on leaderboards. One code per account; guests create an account first.',
+      'Four seasons instead of one: Egg Hunt (Mar 20 - Apr 20), Haunted Rails (Oct 1 - Nov 2) and Winter Fest (Dec 1 - Jan 6), each with its own limited cosmetics and a free event gift. The advent calendar is back for December.',
+      'HDRI environment from Poly Haven (CC0): a real sky now lights and reflects on runners, boards and metal. The visible sky keeps its day/night and per-map weather. New Graphics setting to turn it off.',
+      'New seasonal cosmetics: Bunny Hop and Pumpkin Jack outfits, Eggshell and Broomstick boards, Egg Basket and Little Bat backpacks, Cherry Bloom and Spirit Veil auras, Petal Trail and Ember Wake trails.',
+      'Backend 2.0.0: premium profiles and badges in every leaderboard, event gifts that pay once per occurrence, all events exposed by /api/events, and the Render deployment blueprint.',
+      'Fixes and polish across the menus, the shop previews and the event countdowns. Version 2.0.0 is the production baseline.',
+    ],
+  },
+  {
     version: '1.6.0', date: '2026-11-25', title: 'Style, tournaments, phones',
     tags: ['cosmetics', 'tournaments', 'mobile'],
     notes: [
@@ -48,7 +60,7 @@ export const UPDATES = [
     ],
   },
   {
-    version: '2.0.0', date: '2026-11-24', title: 'Reverse Surfers',
+    version: '1.9.0', date: '2026-11-24', title: 'Reverse Surfers',
     tags: ['major'],
     notes: [
       'New name, new logo, brand-new loading screen and a Fortnite-style top bar: Play, Shop, Career, Leaderboard, Events, Updates, Support, Settings.',

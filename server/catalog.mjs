@@ -15,7 +15,7 @@ export const UPGRADE_IDS = ['magnet', 'jetpack', 'sneakers', 'mult'];
 export const BOARD_PRICE = 300, BOARD_MAX = 99;
 
 export const RUNNERS = {
-  rio: 0, kit: 0, nova: 600, rex: 1800, zip: 3500, mika: 6000, bolt: 10000, frost: 12000, coco: 15000, dune: 18000, volt: 22000, bun: 26000, duke: 30000,
+  rio: 0, kit: 0, rook: 0, nova: 600, rex: 1800, zip: 3500, mika: 6000, bolt: 10000, frost: 12000, coco: 15000, dune: 18000, volt: 22000, bun: 26000, duke: 30000,
 };
 // Cosmetics. `event` = only purchasable while that event is running (owners keep them forever).
 export const COSMETICS = {
@@ -59,6 +59,18 @@ export const COSMETICS = {
   't_sparks':   { slot: 'trail', name: 'Sparks', price: 1200, rarity: 'common', desc: 'A line of golden sparks.' },
   't_stars':    { slot: 'trail', name: 'Stardust', price: 2600, rarity: 'rare', desc: 'Twinkling stars in your wake.' },
   't_snow':     { slot: 'trail', name: 'Snow Flurry', price: 1800, rarity: 'rare', event: 'winterfest', desc: 'Snowflakes swirl behind you.' },
+  // Easter / Spring
+  'o_bunny':    { slot: 'outfit', name: 'Bunny Hop', price: 3200, rarity: 'epic', event: 'easter', desc: 'A pastel hoodie, floppy ears and a cotton tail.' },
+  'b_egg':      { slot: 'board', name: 'Eggshell', price: 1600, rarity: 'rare', event: 'easter', desc: 'A speckled pastel deck with a jelly-bean rail.' },
+  'bg_basket':  { slot: 'bag', name: 'Egg Basket', price: 1800, rarity: 'rare', event: 'easter', desc: 'A woven basket full of painted eggs.' },
+  'au_bloom':   { slot: 'aura', name: 'Cherry Bloom', price: 3000, rarity: 'rare', event: 'easter', desc: 'Pink petals drift around your feet.' },
+  't_petals':   { slot: 'trail', name: 'Petal Trail', price: 1400, rarity: 'common', event: 'easter', desc: 'A soft ribbon of petals.' },
+  // Halloween
+  'o_pumpkin':  { slot: 'outfit', name: 'Pumpkin Jack', price: 3600, rarity: 'epic', event: 'halloween', desc: 'A carved-orange puffer with midnight trim.' },
+  'b_broom':    { slot: 'board', name: 'Broomstick', price: 1900, rarity: 'epic', event: 'halloween', desc: 'A bristly deck that leaves a trail of sparks.' },
+  'bg_bat':     { slot: 'bag', name: 'Little Bat', price: 2200, rarity: 'rare', event: 'halloween', desc: 'A sleepy bat rides on your back.' },
+  'au_spirit':  { slot: 'aura', name: 'Spirit Veil', price: 3400, rarity: 'rare', event: 'halloween', desc: 'A cold violet shimmer.' },
+  't_embers':   { slot: 'trail', name: 'Ember Wake', price: 1500, rarity: 'common', event: 'halloween', desc: 'Orange embers glow in your wake.' },
 };
 export const BUNDLES = {
   'bundle_starter': { name: 'Starter Pack', price: 1200, desc: '5 hoverboards, Magnet and Jetpack level 1.', grant: { boards: 5, up: { magnet: 1, jetpack: 1 } } },
@@ -69,20 +81,32 @@ export const BUNDLES = {
 // ----------------------------------------------------------------------------------------- events
 // start/end are [month, day] in UTC. `year` of the end is next year when the window wraps.
 export const EVENTS = {
+  easter:     { id: 'easter', name: 'Egg Hunt', start: [3, 20], end: [4, 20], blurb: 'Spring comes to the rails: pastel cosmetics, an egg basket and a free Bunny Hop outfit.' },
+  halloween:  { id: 'halloween', name: 'Haunted Rails', start: [10, 1], end: [11, 2], blurb: 'The night line wakes up: pumpkin gear, a little bat and a free Pumpkin Jack outfit.' },
   winterfest: { id: 'winterfest', name: 'Winter Fest', start: [12, 1], end: [1, 6], blurb: 'Snow village map, holiday train, advent calendar and limited cosmetics.' },
+};
+// One free cosmetic + coins per event, once per account and per occurrence.
+export const EVENT_GIFTS = {
+  easter:     { cos: 'o_bunny', coins: 500, label: 'Bunny Hop outfit + 500 coins' },
+  halloween:  { cos: 'o_pumpkin', coins: 666, label: 'Pumpkin Jack outfit + 666 coins' },
+  winterfest: { cos: 't_snow', coins: 500, label: 'Snow Flurry trail + 500 coins' },
 };
 export function eventStatus(id, t = nowMs()) {
   const e = EVENTS[id];
+  if (!e) return null;
   const d = new Date(t), y = d.getUTCFullYear();
   const wraps = e.end[0] < e.start[0];
   // the occurrence that could contain `t`: started this year, or (when wrapping) started last year
   const candidates = [y - 1, y].map((sy) => ({ s: Date.UTC(sy, e.start[0] - 1, e.start[1]), en: Date.UTC(sy + (wraps ? 1 : 0), e.end[0] - 1, e.end[1] + 1), sy }));
   const cur = candidates.find((c) => t >= c.s && t < c.en);
-  if (cur) return { id, active: true, year: cur.sy, startsAt: cur.s, endsAt: cur.en, name: e.name, blurb: e.blurb };
+  const gift = EVENT_GIFTS[id] || null;
+  if (cur) return { id, active: true, year: cur.sy, startsAt: cur.s, endsAt: cur.en, name: e.name, blurb: e.blurb, gift };
   const next = Date.UTC(t < Date.UTC(y, e.start[0] - 1, e.start[1]) ? y : y + 1, e.start[0] - 1, e.start[1]);
   const nextEnd = Date.UTC(new Date(next).getUTCFullYear() + (wraps ? 1 : 0), e.end[0] - 1, e.end[1] + 1);
-  return { id, active: false, year: new Date(next).getUTCFullYear(), startsAt: next, endsAt: nextEnd, name: e.name, blurb: e.blurb };
+  return { id, active: false, year: new Date(next).getUTCFullYear(), startsAt: next, endsAt: nextEnd, name: e.name, blurb: e.blurb, gift };
 }
+export const eventIds = () => Object.keys(EVENTS);
+export const allEvents = (t = nowMs()) => Object.fromEntries(eventIds().map((id) => [id, eventStatus(id, t)]));
 export const eventActive = (id, t = nowMs()) => eventStatus(id, t).active;
 
 // Limited-time event: "Neon Rush". LTM_SCHEDULE=always (default) | weekend (Fri 18:00 -> Mon 06:00 UTC)

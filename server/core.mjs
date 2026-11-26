@@ -118,10 +118,10 @@ export async function handleApi(req, res) {
       const limit = clamp(Number(url.searchParams.get('limit')) || 50, 1, 100);
       const since = period === 'day' ? now() - 86400000 : period === 'week' ? now() - 7 * 86400000 : 0;
       let rows;
-      if (board === 'ranked') rows = q.boardRanked.all(limit).map((r, i) => ({ rank: i + 1, name: r.name, tag: tagOf(r.pid), score: Math.round(r.score), tier: tierOf(r.score), games: r.games, wins: r.wins }));
-      else if (board === 'daily') rows = q.boardDaily.all(dailyInfo().key, limit).map((r, i) => ({ rank: i + 1, name: r.name, tag: tagOf(r.pid), score: r.score, dist: r.dist, time: r.time }));
-      else if (board === 'guest') rows = q.boardGuests.all(limit).map((r, i) => ({ rank: i + 1, name: r.name, tag: tagOf(r.pid), score: r.score, dist: r.dist, time: r.time }));
-      else if (MODES.has(board)) rows = q.boardMode.all(board, since, limit).map((r, i) => ({ rank: i + 1, name: r.name, tag: tagOf(r.pid), score: r.score, dist: r.dist, time: r.time }));
+      if (board === 'ranked') rows = q.boardRanked.all(limit).map((r, i) => ({ rank: i + 1, name: r.name, tag: tagOf(r.pid), premium: !!r.premium, score: Math.round(r.score), tier: tierOf(r.score), games: r.games, wins: r.wins }));
+      else if (board === 'daily') rows = q.boardDaily.all(dailyInfo().key, limit).map((r, i) => ({ rank: i + 1, name: r.name, tag: tagOf(r.pid), premium: !!r.premium, score: r.score, dist: r.dist, time: r.time }));
+      else if (board === 'guest') rows = q.boardGuests.all(limit).map((r, i) => ({ rank: i + 1, name: r.name, tag: tagOf(r.pid), premium: !!r.premium, score: r.score, dist: r.dist, time: r.time }));
+      else if (MODES.has(board)) rows = q.boardMode.all(board, since, limit).map((r, i) => ({ rank: i + 1, name: r.name, tag: tagOf(r.pid), premium: !!r.premium, score: r.score, dist: r.dist, time: r.time }));
       else { reply(res, 400, { error: 'bad_board' }); return true; }
       const out = { board, period, rows, you: null };
       if (me) {
@@ -238,7 +238,7 @@ function snapshot(room) {
   return {
     t: 'room', code: room.code, host: room.host, map: room.map, state: room.state, pub: room.pub, ranked: room.ranked, ltm: room.ltm || null, mode: room.mode,
     teamMode: !!room.teamMode, size: room.size || 0,
-    players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, char: p.char, eq: p.eq || null, team: p.team == null ? null : p.team, ready: p.ready, alive: p.alive, d: Math.floor(p.d), s: Math.floor(p.s), rating: p.rating, tier: p.rating == null ? null : tierOf(p.rating) })),
+    players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, char: p.char, premium: !!p.premium, eq: p.eq || null, team: p.team == null ? null : p.team, ready: p.ready, alive: p.alive, d: Math.floor(p.d), s: Math.floor(p.s), rating: p.rating, tier: p.rating == null ? null : tierOf(p.rating) })),
   };
 }
 const pushRoom = (room) => broadcast(room, snapshot(room));
@@ -265,7 +265,7 @@ function addToRoom(ws, room, msg) {
   leaveAll(ws);
   ws.room = room;
   const p = ws.player;
-  room.players.set(ws.id, { ws, id: ws.id, pid: p ? p.id : null, name: p ? p.name : cleanName(msg && msg.name), char: cleanChar(msg && msg.char), eq: p ? invOf(p).equip : null, rating: p ? p.rating : null, ready: false, alive: true, d: 0, s: 0, last: 0, ac: null });
+  room.players.set(ws.id, { ws, id: ws.id, pid: p ? p.id : null, name: p ? p.name : cleanName(msg && msg.name), char: cleanChar(msg && msg.char), premium: !!(p && p.premium), eq: p ? invOf(p).equip : null, rating: p ? p.rating : null, ready: false, alive: true, d: 0, s: 0, last: 0, ac: null });
   if (!room.host) room.host = ws.id;
   if (room.state === 'results') room.state = 'lobby';
 }
@@ -468,9 +468,9 @@ function findTeams(pool, seed, N, t, ranked) {
   for (const A of subsets(pool, N, seed)) {
     const rest = pool.filter((e) => !A.includes(e));
     for (const B of subsets(rest, N)) {
-      if (!ranked) return [A, B];
-      if (linkedAcross(A, B)) continue; // the same person / device on both sides is never matched
+      if (linkedAcross(A, B)) continue; // the same person / device on both sides is never matched (normal too)
       const diff = Math.abs(avgRating(A) - avgRating(B));
+      if (!ranked) { if (diff < bestDiff) { best = [A, B]; bestDiff = diff; } continue; } // normal: closest teams, no widening
       const waited = Math.max(...[...A, ...B].map((e) => t - e.joined)), unsure = Math.max(...[...A, ...B].map((e) => e.sigma || 0));
       const win = Math.min(50 + (waited / 1000) * 30 + (unsure - mmr.SIGMA_FLOOR) * 0.35, 900);
       if (diff > win) continue;

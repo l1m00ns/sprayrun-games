@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS saves (pid TEXT PRIMARY KEY, ver INTEGER NOT NULL DEF
 CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, pid TEXT NOT NULL, item TEXT NOT NULL, price INTEGER NOT NULL, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_purchases_pid ON purchases(pid, ts);
 CREATE TABLE IF NOT EXISTS advent_claims (pid TEXT NOT NULL, year INTEGER NOT NULL, day INTEGER NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY (pid, year, day));
+CREATE TABLE IF NOT EXISTS code_claims (code TEXT PRIMARY KEY, pid TEXT NOT NULL UNIQUE, ts INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS event_claims (pid TEXT NOT NULL, event TEXT NOT NULL, year INTEGER NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY (pid, event, year));
 CREATE TABLE IF NOT EXISTS support_tickets (
   id INTEGER PRIMARY KEY AUTOINCREMENT, pid TEXT NOT NULL, subject TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'other',
   status TEXT NOT NULL DEFAULT 'open', created INTEGER NOT NULL, updated INTEGER NOT NULL, ai_summary TEXT
@@ -73,6 +75,8 @@ addCol('players', 'last_seen', 'INTEGER NOT NULL DEFAULT 0');
 addCol('players', 'imported', 'INTEGER NOT NULL DEFAULT 0');
 addCol('players', 'earned_day', 'INTEGER NOT NULL DEFAULT 0'); // coins credited today (daily earning cap)
 addCol('players', 'earned_key', 'INTEGER NOT NULL DEFAULT 0');
+addCol('players', 'premium', 'INTEGER NOT NULL DEFAULT 0');
+addCol('players', 'premium_since', 'INTEGER NOT NULL DEFAULT 0');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_players_username ON players(username COLLATE NOCASE) WHERE username IS NOT NULL');
 
 const st = (sql) => db.prepare(sql);
@@ -101,6 +105,12 @@ export const q = {
   getClaim: st('SELECT * FROM advent_claims WHERE pid = ? AND year = ? AND day = ?'),
   addClaim: st('INSERT INTO advent_claims (pid, year, day, ts) VALUES (?, ?, ?, ?)'),
   claims: st('SELECT day FROM advent_claims WHERE pid = ? AND year = ?'),
+  codeByCode: st('SELECT * FROM code_claims WHERE code = ?'),
+  codeByPid: st('SELECT * FROM code_claims WHERE pid = ?'),
+  claimCode: st('INSERT INTO code_claims (code, pid, ts) VALUES (?, ?, ?)'),
+  setPremium: st('UPDATE players SET premium = 1, premium_since = ? WHERE id = ?'),
+  eventClaim: st('SELECT * FROM event_claims WHERE pid = ? AND event = ? AND year = ?'),
+  claimEvent: st('INSERT INTO event_claims (pid, event, year, ts) VALUES (?, ?, ?, ?)'),
   addTicket: st('INSERT INTO tickets (nonce, pid, created) VALUES (?, ?, ?)'),
   getTicket: st('SELECT * FROM tickets WHERE nonce = ?'),
   useTicket: st('UPDATE tickets SET used = 1 WHERE nonce = ? AND used = 0'),
@@ -114,20 +124,20 @@ export const q = {
   recentMatches: st(`SELECT m.created, m.map, m.mode, mp.score, mp.dist, mp.place, mp.before, mp.after, mp.dq,
       (SELECT COUNT(*) FROM match_players x WHERE x.match_id = m.id) AS players
     FROM match_players mp JOIN matches m ON m.id = mp.match_id WHERE mp.pid = ? ORDER BY m.id DESC LIMIT ?`),
-  boardMode: st(`SELECT p.name AS name, p.id AS pid, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
+  boardMode: st(`SELECT p.name AS name, p.id AS pid, p.premium AS premium, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
     FROM runs r JOIN players p ON p.id = r.pid
     WHERE r.mode = ? AND r.daily = 0 AND r.flagged = 0 AND p.banned = 0 AND r.created >= ?
     GROUP BY r.pid ORDER BY score DESC LIMIT ?`),
-  boardDaily: st(`SELECT p.name AS name, p.id AS pid, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
+  boardDaily: st(`SELECT p.name AS name, p.id AS pid, p.premium AS premium, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
     FROM runs r JOIN players p ON p.id = r.pid
     WHERE r.daily = 1 AND r.dkey = ? AND r.flagged = 0 AND p.banned = 0
     GROUP BY r.pid ORDER BY score DESC LIMIT ?`),
   // Players who never made an account still get their own board: a guest is a real player with a real score.
-  boardGuests: st(`SELECT p.name AS name, p.id AS pid, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
+  boardGuests: st(`SELECT p.name AS name, p.id AS pid, p.premium AS premium, MAX(r.score) AS score, r.dist AS dist, r.time AS time, r.created AS created
     FROM runs r JOIN players p ON p.id = r.pid
     WHERE r.mode = 'classic' AND r.daily = 0 AND r.flagged = 0 AND p.banned = 0 AND p.username IS NULL
     GROUP BY r.pid ORDER BY score DESC LIMIT ?`),
-  boardRanked: st('SELECT name, id AS pid, rating AS score, games, wins FROM players WHERE games > 0 AND banned = 0 ORDER BY rating DESC LIMIT ?'),
+  boardRanked: st('SELECT name, id AS pid, premium, rating AS score, games, wins FROM players WHERE games > 0 AND banned = 0 ORDER BY rating DESC LIMIT ?'),
   myBestMode: st('SELECT MAX(score) AS s FROM runs WHERE pid = ? AND mode = ? AND daily = 0 AND flagged = 0 AND created >= ?'),
   betterModeCount: st(`SELECT COUNT(*) AS n FROM (SELECT MAX(r.score) AS s FROM runs r JOIN players p ON p.id = r.pid
     WHERE r.mode = ? AND r.daily = 0 AND r.flagged = 0 AND p.banned = 0 AND r.created >= ? GROUP BY r.pid) WHERE s > ?`),
@@ -146,7 +156,7 @@ export const q = {
   addMsg: st('INSERT INTO support_msgs (ticket, role, text, created) VALUES (?, ?, ?, ?)'),
   msgsOf: st('SELECT id, role, text, created FROM support_msgs WHERE ticket = ? ORDER BY id ASC LIMIT 200'),
   addDuel: st('INSERT INTO duels (created, a, b, winner, reason, a_hp, b_hp, a_hits, b_hits) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
-  publicProfile: st('SELECT id, name, created, rating, games, wins, xp, career, banned FROM players WHERE id = ?'),
+  publicProfile: st('SELECT id, name, created, rating, games, wins, xp, career, banned, premium, premium_since FROM players WHERE id = ?'),
   profileByName: st('SELECT id FROM players WHERE name = ? COLLATE NOCASE AND banned = 0 ORDER BY games DESC LIMIT 1'),
 };
 

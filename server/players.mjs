@@ -22,6 +22,7 @@ export function profile(p, withRank = true) {
     ranked: { minSeconds: rankedMinSeconds(), played: Math.floor(careerOf(p).time), unlocked: careerOf(p).time >= rankedMinSeconds() },
     badges: (careerOf(p).badges || []).map((id) => ({ id, ...(BADGES[id] || { name: id }) })),
     banned: !!p.banned, kickedUntil: p.kicked_until > nowMs() ? p.kicked_until : 0, banReason: p.banned ? p.ban_reason || 'Violation of the fair-play policy' : null,
+    premium: !!p.premium, premiumSince: p.premium_since || 0,
     ladders: ladderHook(p.id), // Solo / Duos / Trios ratings (filled in by mmr.mjs)
     rank: withRank && p.games > 0 && !p.banned ? q.ratingRank.get(p.rating).n + 1 : null,
   };

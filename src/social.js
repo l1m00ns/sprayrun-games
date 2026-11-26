@@ -2,8 +2,10 @@
 // the "looking for runners" overlay. The server side is server/social.mjs + the team queues in server/core.mjs.
 import { MODES, CATS, modeById, specOf, modeArt, modeFromSpec, sizeName } from './modes.js';
 import { icon } from './iconsax.js';
+import { trackEvent } from './analytics.js';
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const prem = (on) => (on ? '<span class="prem-badge sm">PREMIUM</span>' : '');
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s) % 60).padStart(2, '0')}`;
 
 export function initSocial(ctx) {
@@ -54,17 +56,20 @@ export function initSocial(ctx) {
       const kind = m.ltm ? 'LIMITED' : m.kind === 'ranked' ? 'RANKED' : m.online ? 'NORMAL' : 'OFFLINE';
       return `<button class="mp-card${m.id === cur.id ? ' sel' : ''}${off ? ' off' : ''}" data-id="${m.id}" ${off ? 'aria-disabled="true"' : ''}>${modeArt(m)}<span class="mp-badge ${off ? 'off' : ''}">${off ? 'LOCKED' : kind}</span><b>${esc(m.name)}</b><small>${esc(m.tag)}</small>${off ? `<span class="mp-lock">${icon('lock', 16)}<i>${esc(off)}</i></span>` : m.id === cur.id ? '<span class="mp-tick">✓</span>' : ''}</button>`;
     };
-    body.innerHTML = `<div class="mp-head"><div class="mp-cats">${catTabs}</div><div class="mp-now">${modeArt(cur, { size: 'lg' })}<div class="mp-now-txt"><small>${esc(catName(cur))}</small><h3>${esc(cur.name)}</h3><p>${esc(cur.blurb)}</p><div class="mp-tags"><span class="chip">${esc(cur.tag)}</span><span class="chip">${cur.online ? (cur.kind === 'ranked' ? 'RANKED' : cur.ltm ? 'LIMITED TIME' : 'NORMAL') : 'OFFLINE'}</span>${cur.size > 1 ? `<span class="chip">${cur.size} v ${cur.size}</span>` : ''}</div></div></div></div>`
-      + `<div class="mp-grid">${MODES.filter((m) => m.cat === pickCat).map(card).join('')}</div>`
+    $('mpCats').innerHTML = `<div class="mp-cats">${catTabs}</div>`;
+    body.innerHTML = `<div class="mp-grid">${MODES.filter((m) => m.cat === pickCat).map(card).join('')}</div>`
       + (maps.length ? `<div class="mp-rules"><span>Map</span><div class="seg wrap">${maps.map((b) => `<button data-map="${esc(b.id)}" class="${save.settings.map === b.id ? 'sel' : ''}">${esc(b.name)}</button>`).join('')}</div></div>` : '')
       + `<div class="mp-rules"><span>Rules</span><div class="seg"><button data-r="classic" class="${rules() === 'classic' ? 'sel' : ''}">Classic</button><button data-r="nocoin" class="${rules() === 'nocoin' ? 'sel' : ''}">No Coin</button></div><small>${esc(pickDisabled(cur) || cur.blurb)}</small></div>`
       + `<div class="mp-foot"><button class="btn sm" id="mpGo">USE THIS MODE</button></div>`;
-    for (const b of body.querySelectorAll('[data-cat]')) b.onclick = () => { audio.sfx.click(); pickCat = b.dataset.cat; renderPicker(); };
+    const syncMore = () => body.classList.toggle('more', body.scrollTop + body.clientHeight < body.scrollHeight - 3);
+    body.onscroll = syncMore;
+    requestAnimationFrame(syncMore);
+    for (const b of $('mpCats').querySelectorAll('[data-cat]')) b.onclick = () => { audio.sfx.click(); pickCat = b.dataset.cat; renderPicker(); };
     for (const b of body.querySelectorAll('.mp-card')) {
       const choose = () => {
         const m = modeById(b.dataset.id), why = pickDisabled(m);
         if (why) { audio.sfx.deny(); toast(why); return; }
-        audio.sfx.click(); save.playMode = m.id; persist();
+        audio.sfx.click(); save.playMode = m.id; persist(); trackEvent('mode_select', { meta: { mode: m.id } });
         if (m.kind && net.connected && isLeader()) net.send({ t: 'p_spec', spec: specOf(m, rules()) });
         renderModeCard(); show('modePick', false);
       };
@@ -87,13 +92,14 @@ export function initSocial(ctx) {
     if (followsLeader()) { toast('Waiting for the party leader'); return; }
     const m = modeById(save.playMode);
     audio.initAudio(); audio.resumeAudio();
-    if (!m.online) { if (m.id === 'daily') $('btnDaily').click(); else { save.settings.mode = m.mode || 'classic'; persist(); startOffline({ fun: m.fun || null, explore: !!m.explore, event: m.event || null }); } return; }
+    if (!m.online) { trackEvent('mode_select', { meta: { mode: m.id } }); if (m.id === 'daily') $('btnDaily').click(); else { save.settings.mode = m.mode || 'classic'; persist(); startOffline({ fun: m.fun || null, explore: !!m.explore, event: m.event || null }); } return; }
     if (m.room) { $('btnOnline').click(); return; }
     const lock = rankedLock();
     if (m.kind === 'ranked' && lock) { audio.sfx.deny(); toast(pickDisabled(m)); return; }
     S.busy = true; renderModeCard();
     try {
       await ensureOnline();
+      trackEvent('queue_start', { mode: m.id, meta: { kind: m.kind, size: m.size, party: partySize() } });
       net.send({ t: 'p_char', char: charId() });
       net.send({ t: 'p_spec', spec: specOf(m, rules()) });
       net.send({ t: 'p_play' });
@@ -122,13 +128,13 @@ export function initSocial(ctx) {
     $('soBody').innerHTML = `<div class="so-ring ${s.phase === 2 ? 'go' : s.phase === 1 ? 'found' : ''}"><i></i><span>${s.phase === 2 ? '' : mmss((performance.now() - s.t0) / 1000)}</span></div><ol class="so-steps">${PH.map((p, i) => `<li class="${i < s.phase ? 'done' : i === s.phase ? 'on' : ''}">${p}</li>`).join('')}</ol>`
       + `<div class="so-art">${modeArt(m, { size: 'lg' })}</div><h3>${esc(m.name)}</h3><p class="so-sub">${esc(rulesName())}${s.tier ? ` · ${esc(s.tier)} ${esc(s.rating)}` : ''}</p>`
       + `<p class="so-note" id="soNote">${esc(s.note || 'Looking for runners')}</p>`
-      + `<div class="so-party">${members.map((p) => `<span class="so-chip" style="--c:${colorOf(p.char)}"><i>${esc((p.name || '?')[0].toUpperCase())}</i>${esc(p.name)}</span>`).join('')}</div>`
-      + (s.teams ? `<div class="so-teams">${s.teams.map((t, i) => `<div class="${i === s.mine ? 'mine' : ''}"><small>${i === s.mine ? 'Your team' : 'Rivals'}</small>${t.map((p) => `<span>${esc(p.name)}${p.tier ? ` <em>${esc(p.tier)}</em>` : ''}</span>`).join('')}</div>`).join('')}</div>` : '');
+      + `<div class="so-party">${members.map((p) => `<span class="so-chip" style="--c:${colorOf(p.char)}"><i>${esc((p.name || '?')[0].toUpperCase())}</i>${esc(p.name)}${prem(p.premium)}</span>`).join('')}</div>`
+      + (s.teams ? `<div class="so-teams">${s.teams.map((t, i) => `<div class="${i === s.mine ? 'mine' : ''}"><small>${i === s.mine ? 'Your team' : 'Rivals'}</small>${t.map((p) => `<span>${esc(p.name)}${prem(p.premium)}${p.tier ? ` <em>${esc(p.tier)}</em>` : ''}</span>`).join('')}</div>`).join('')}</div>` : '');
     $('soCancel').style.display = isLeader() && !S.matched ? '' : 'none';
     $('soOffline').style.display = !S.matched && performance.now() - s.t0 > 15000 ? '' : 'none';
   }
   $('soCancel').onclick = () => { audio.sfx.click(); net.send({ t: 'p_cancel' }); };
-  $('soOffline').onclick = () => { audio.sfx.click(); net.send({ t: 'p_cancel' }); closeSearch(); save.settings.mode = rules(); persist(); startOffline(); };
+  $('soOffline').onclick = () => { audio.sfx.click(); trackEvent('queue_cancel'); net.send({ t: 'p_cancel' }); closeSearch(); save.settings.mode = rules(); persist(); startOffline(); };
 
   // ------------------------------------------------------------------------------------------------ party strip
   function renderParty() {
@@ -141,7 +147,7 @@ export function initSocial(ctx) {
       const p = list[i];
       if (!p) return `<button class="pslot add" data-add="1" title="Invite a friend"><span>${icon('user', 22)}</span><i>+</i></button>`;
       const kick = S.party && lead === meId() && p.id !== meId() ? `<u data-kick="${esc(p.id)}" title="Remove">×</u>` : '';
-      return `<div class="pslot${p.id === meId() ? ' me' : ''}${p.online === false ? ' off' : ''}" style="--c:${colorOf(p.char)}" title="${esc(p.name)}"><span class="av">${esc((p.name || '?')[0].toUpperCase())}</span>${p.id === lead && list.length > 1 ? `<s>${icon('crown', 14)}</s>` : ''}<b>${esc(p.name)}</b>${kick}</div>`;
+      return `<div class="pslot${p.id === meId() ? ' me' : ''}${p.online === false ? ' off' : ''}" style="--c:${colorOf(p.char)}" title="${esc(p.name)}"><span class="av">${esc((p.name || '?')[0].toUpperCase())}</span>${p.id === lead && list.length > 1 ? `<s>${icon('crown', 14)}</s>` : ''}<b>${esc(p.name)}${prem(p.premium)}</b>${kick}</div>`;
     });
     strip.innerHTML = slots.join('') + (S.party ? '<button class="pleave" id="pLeave">Leave</button>' : '');
     for (const b of strip.querySelectorAll('[data-add]')) b.onclick = () => openFriends();
@@ -178,7 +184,7 @@ export function initSocial(ctx) {
         btns += `<button class="icon-btn" data-rm="${esc(f.id)}" title="Remove friend">${icon('close', 18)}</button>`;
       } else if (kind === 'in') btns = `<button class="btn sm green" data-acc="${esc(f.id)}">ACCEPT</button><button class="btn sm red" data-dec="${esc(f.id)}">DECLINE</button>`;
       else btns = `<button class="icon-btn" data-rm="${esc(f.id)}" title="Cancel request">${icon('close', 18)}</button>`;
-      return `<div class="fr-row ${pres}"><i class="dot"></i><b>${esc(f.name)}</b><span class="tier">${esc(f.tier)}</span><span class="pres">${kind === 'friend' ? esc(PRES[pres]) : kind === 'in' ? 'wants to be your friend' : 'request sent'}</span><span class="fr-btns">${btns}</span></div>`;
+      return `<div class="fr-row ${pres}"><i class="dot"></i><b>${esc(f.name)}${prem(f.premium)}</b><span class="tier">${esc(f.tier)}</span><span class="pres">${kind === 'friend' ? esc(PRES[pres]) : kind === 'in' ? 'wants to be your friend' : 'request sent'}</span><span class="fr-btns">${btns}</span></div>`;
     };
     box.innerHTML = `<div class="fr-top"><div class="fr-code"><small>Your friend code</small><b id="frCode">${esc(d.code)}</b><button class="btn sm" id="frCopy">COPY</button></div>`
       + `<form class="fr-add" id="frForm"><input id="frAdd" placeholder="Username or friend code" maxlength="20" autocomplete="off" spellcheck="false"><button class="btn sm go" type="submit">ADD</button></form></div><p class="fr-msg ${S.msg ? S.msg.cls : ''}" id="frMsg">${esc(S.msg ? S.msg.text : '')}</p>`

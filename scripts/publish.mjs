@@ -75,7 +75,7 @@ const stage = path.join(os.tmpdir(), 'rs-backend-stage');
 fs.mkdirSync(stage, { recursive: true });
 for (const e of fs.readdirSync(stage)) if (e !== '.git' && e !== 'node_modules') fs.rmSync(path.join(stage, e), { recursive: true, force: true });
 const copy = (from, to = from) => { const dst = path.join(stage, to); fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.cpSync(path.join(root, from), dst, { recursive: true }); };
-for (const f of fs.readdirSync(path.join(root, 'server'))) if (f.endsWith('.mjs') && f !== 'standalone.mjs') copy(`server/${f}`);
+for (const f of fs.readdirSync(path.join(root, 'server'))) if ((f.endsWith('.mjs') && f !== 'standalone.mjs') || f === 'codes.json') copy(`server/${f}`); // codes.json is imported by codes.mjs
 // The backend's own entry point: the same file as server/standalone.mjs, but it now lives at the repository ROOT, so its
 // import must point into ./server/ (a plain copy kept `from './core.mjs'`, which does not exist there and broke the build).
 const entry = fs.readFileSync(path.join(root, 'server', 'standalone.mjs'), 'utf8');

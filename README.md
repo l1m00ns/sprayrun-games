@@ -11,18 +11,25 @@ npm run dev:all          # backend (http://localhost:4000) + web (http://localho
 npm run build && npm start   # production : UI + API + temps réel sur le même port (3000)
 npm run dev              # tout-en-un en développement (HMR)
 ```
-Base SQLite dans `data/` (`DATA_DIR`). Node ≥ 22.13. Le client parle à son propre serveur par défaut. **Backend ailleurs (Render, Railway…)** : `NEXT_PUBLIC_BACKEND_URL=https://ton-service.onrender.com` dans le `.env` du front (figé au `npm run build`), ou `public/config.js` pour changer sans reconstruire ; côté backend `CORS_ORIGIN=https://ton-front` et `TRUST_PROXY=1`. La version s’affiche dans Paramètres (`1.3.1-<commit>`).
+Base SQLite dans `data/` (`DATA_DIR`). Node ≥ 22.13. Le client parle à son propre serveur par défaut. **Backend ailleurs (Render, Railway…)** : `NEXT_PUBLIC_BACKEND_URL=https://ton-service.onrender.com` dans le `.env` du front (figé au `npm run build`), ou `public/config.js` pour changer sans reconstruire ; côté backend `CORS_ORIGIN=https://ton-front` et `TRUST_PROXY=1`. La version s’affiche dans Paramètres (`2.0.0-<commit>`).
 
 ## Jeu
 - **5 cartes + World Tour**, météo, jour/nuit, scènes animées, **graffitis**, animation de départ. **Palm Bay** refaite : mer animée (reflets, écume), ponton, bar tiki, filet de volley, serviettes, pirogue, bouées, palmiers penchés.
-- **Trains pleins** : on ne marche plus sur les toits (plus de rampes), toucher un toit en retombant = crash ; wagons plus nombreux et plus longs (jusqu’à 4), **couloirs** (slalom, enchaînements saut/roulade entre deux murs), écarts qui se resserrent et deuxième palier de difficulté après ~4,5 km ; vitesse plafond ×1,6. Les chocs ont leur animation (trébuchement, coup latéral, tête cognée, projection en arrière + étoiles + arrêt sur image).
+- **Trains solides** : les wagons sont des murs, le toit reste une plateforme accessible seulement avec les Super Sneakers (pas de rampes, pas de ligne de pièces sur le toit). Un choc frontal te projette hors du wagon, et le train ne traverse plus le personnage pendant l’animation de mort. Wagons plus nombreux et plus longs (jusqu’à 4), **couloirs** (slalom, enchaînements saut/roulade entre deux murs), écarts qui se resserrent et deuxième palier de difficulté après ~4,5 km ; vitesse plafond ×1,6. Les chocs ont leur animation (trébuchement, coup latéral, tête cognée, projection en arrière + étoiles + arrêt sur image).
 - **Rio** (héros original : casquette, doudoune) + 12 coureurs, tenues, planches et traînées (boutique).
 - **Vitesse progressive** : la rampe authentique (110→220) continue ensuite vers ×1,4 ; **commandes « snappy »** (changement de voie 0,13 s, entrées appliquées instantanément) ou « classiques » (0,27 s).
 - **Neon Rush** (événement limité) : la ville passe de nuit, les rails s'allument et les pièces brillent en magenta. **Double Score offert au départ**, **aimant à 400 m**, gemmes néon et HUD dédié. Jouable hors ligne depuis la carte de mode ou le bouton NEON RUSH ; rien à télécharger, aucun duel.
 - **Menu secret Spray** (code Konami, puis touche **²** pour l’ouvrir/fermer partout, même en course) : recherche, compteurs par onglet, bouton **UNLOAD** (tout désactiver pour rejouer en ligne), 68 options (joueur, pouvoirs, vitesse, bot pro, monde, look, caméra, duel, outils). Toute option qui change le gameplay rend la session « entraînement » : rien n'est enregistré, envoyé ni classé, le jeu en ligne est bloqué. Bot pro à planificateur (survit 10/10 parties de 100 s sans invincibilité).
-- **Winter Fest** (1er déc → 6 janv., horloge UTC identique pour tous) et **calendrier de l'avent** de 25 portes (récompenses côté serveur).
+- **Quatre saisons** (horloge UTC identique pour tous) : **Egg Hunt** (20 mars → 20 avril), **Haunted Rails** (1er oct. → 2 nov.), **Winter Fest** (1er déc. → 6 janv.) et **calendrier de l'avent** de 25 portes. Chaque événement a ses cosmétiques limités et un **cadeau gratuit** à réclamer une fois par compte.
 - **Langues** : bouton 🌐 + écran d'accueil à la première visite (langue, apparence, commandes/caméra, fair-play & vie privée, compte). Anglais et français (traduction en direct de toute l'interface ; ajouter une langue = un dictionnaire dans `src/i18n.js`).
 - **Interface** : barre supérieure (Jouer, Boutique, Carrière, Classement, Événements, Mises à jour, Support), profil, **statistiques** en graphiques, **paramètres** (≈35 options : graphismes, caméra, commandes, audio, accessibilité), aucune pop-up navigateur (dialogues natifs), scrollbars masquées.
+
+## 2.0.0 — premium, saisons, HDRI
+- **Codes premium à la Roblox** : 100 codes à usage unique (`RS2-XXXX-XXXX`) donnent **tous les cosmétiques** du jeu et un badge **PREMIUM** à côté du pseudo (classements, profil, amis, groupe). Un code par compte, réservé aux comptes. La liste de livraison est dans `docs/CODES.md` (à garder privée pour un vrai giveaway).
+- **Saisons complètes** : Egg Hunt, Haunted Rails et Winter Fest, avec cosmétiques exclusifs, cadeaux d'événement et calendrier de l'avent. Les cadeaux utilisent une table `event_claims` : impossible de les réclamer deux fois.
+- **HDRI Poly Haven (CC0)** : `public/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr` éclaire et reflète les runners, planches et métaux via `scene.environment` ; le ciel visible reste le shader du jeu (jour/nuit, météo, biomes). Réglage **HDRI reflections** dans Graphismes, crédit dans `public/hdri/CREDITS.md`.
+- **Backend 2.0.0** : premium dans les profils et classements, cadeaux d'événements idempotents, `/api/events` complet, blueprint Render, racine informative et CORS/WS configurables.
+- **Tests** : `node tools/codes.mjs` et `node tools/events.mjs` couvrent les codes et les saisons (base temporaire).
 
 ## Jouer ensemble (1.4 → 1.6)
 - **Carte de mode au-dessus de JOUER** : Limité (Neon Rush), Classé / Normal en **Solo, Duos, Trios**, modes hors ligne (Classique, Sans pièce, Daily), salle perso. On choisit, on appuie sur JOUER : plus de bouton « Online ». Anneau de chargement puis **Recherche → Préparation → Lancement**.
@@ -57,7 +64,7 @@ node tools/welcome.mjs <dir># accueil, langues, ranked, contestation, stats (18)
 node tools/secret.mjs       # Konami, 67 options, isolation entraînement, bot pro (14)
 node tools/duel.mjs <dir>   # arène, Gold Eagle, bot, victoire/nul, warp solo (11)
 node tools/perf.mjs         # GPU, résolution adaptative, stats d’images (22)
-node tools/trains.mjs       # trains pleins, chocs, difficulté, bot pro sur le générateur dur (14)
+node tools/trains.mjs       # toits praticables, chocs, difficulté, bot pro sur le générateur dur
 node tools/features.mjs · smoke.mjs . · online.mjs . · mp.mjs .
 node tools/ai-panel.mjs     # panel IA réel (utilise .env)  ·  ai-probe.mjs · ai-tune.mjs
 ```

@@ -601,10 +601,12 @@ export class World {
       s.scenery(biome, s.index);
       if (!calm && !this.noObstacles) this.generate(s);
     });
-    if (this.coins.list.length > coinMark) this.coins.prune(coinMark, s); // no coin buried in a train or a wall
     this.genZ = 0;
     this.root.add(s.group);
     this.segs.push(s);
+    // A coin line can start slightly in front of its own segment, which means a train generated in the next
+    // segment can later surround it. Scan the new segment against every coin, not only the ones it just made.
+    if (this.coins.list.length > coinMark) for (const seg of this.segs) this.coins.prune(0, seg);
     return s;
   }
 
@@ -652,7 +654,7 @@ export class World {
   // `sweep` is how far the world moved this frame. A fast train can cross the whole collision band between two
   // frames; without this the runner passed straight through it. Only lethal solids (trains, containers) are swept:
   // barriers must not be landed on early.
-  probe(px, py, ph, frontDepth, sweep = 0) {
+  probe(px, py, ph, frontDepth, sweep = 0, vy = 0) {
     let ground = 0, hit = null;
     const HD = 0.3, travel = Math.min(Math.max(sweep || 0, 0), 8);
     for (const seg of this.segs) {
@@ -671,7 +673,8 @@ export class World {
           top = s.yMax * f;
           if (adx < 0.6) { ground = Math.max(ground, top); continue; }
         }
-        if (s.walkable && py >= top - C.STEP_TOL) { ground = Math.max(ground, top); continue; }
+        // falling onto a roof is a landing, with a little extra reach for the corners (no more roof-edge deaths)
+        if (s.walkable && py >= top - C.STEP_TOL - (vy <= 0 ? 0.16 : 0)) { ground = Math.max(ground, top); continue; }
         if (s.solidTop && py >= top - 0.04 && py < top + 0.8) { // a wall you cannot stand on: coming down onto the roof is a crash (the band is deep enough not to be skipped in one frame)
           if (!hit || !hit.front) hit = { solid: s, front: true, lethal: true, kind: s.kind };
           continue;
@@ -817,7 +820,7 @@ export class World {
   placeContainer(seg, lane, z, len) {
     const m = makeContainer(len, randInt(0, 1)); m.position.set(C.LANES[lane], 0, z); seg.add(m);
     m.children.forEach((c) => seg.own.push(c.geometry));
-    seg.addSolid({ kind: 'container', obj: m, x: C.LANES[lane], hw: 0.95, lz0: z - len, lz1: z, yMin: 0, yMax: C.TRAIN_H, walkable: C.ROOF_RUN, solidTop: !C.ROOF_RUN, lethal: true });
+    seg.addSolid({ kind: 'container', obj: m, x: C.LANES[lane], hw: 0.95, lz0: z - len, lz1: z, yMin: 0, yMax: C.TRAIN_H, walkable: C.ROOF_LAND, solidTop: !C.ROOF_LAND, lethal: true });
   }
   placeTrain(seg, lane, z, carriages, ramp, biome, vz = 0) {
     const TRIGGER = 50;
@@ -838,7 +841,8 @@ export class World {
       headlight.position.set(0, 1.9, 0.4); headlight.frustumCulled = false; fxLayer(headlight); t.add(headlight);
       seg.own.push(headlight.geometry);
     }
-    seg.addSolid({ kind: 'train', obj: t, baseZ: zt, off: 0, vz, trigger: vz ? TRIGGER : 0, headlight, started: false, steam: !!t.userData.steam, x, hw: 0.95, lz0: zt - len, lz1: zt, yMin: 0, yMax: C.TRAIN_H, walkable: C.ROOF_RUN, solidTop: !C.ROOF_RUN, lethal: true });
+    seg.addSolid({ kind: 'train', obj: t, baseZ: zt, off: 0, vz, trigger: vz ? TRIGGER : 0, headlight, started: false, steam: !!t.userData.steam, x, hw: 0.95, lz0: zt - len, lz1: zt, yMin: 0, yMax: C.TRAIN_H, walkable: C.ROOF_LAND, solidTop: !C.ROOF_LAND, lethal: true });
+    // no roof coin line: the roof is a landing pad, not a second lane to farm
     return { zt, len };
   }
 

@@ -11,7 +11,7 @@ const TEMPLATES = [
   { id: 'lane', text: (n) => `Change lanes ${n} times`, scale: (l) => 40 + l * 25, event: 'lane' },
   { id: 'board', text: (n) => `Use a hoverboard ${Math.max(1, Math.floor(n))} time${n > 1 ? 's' : ''}`, scale: (l) => 1 + Math.floor(l / 3), event: 'board' },
   { id: 'score', text: (n) => `Score ${n} points in one run`, scale: (l) => 3000 + l * 2500, event: 'score', max: true },
-  { id: 'roof', text: (n) => `Run ${n} meters on train roofs`, scale: (l) => 80 + l * 60, event: 'roof', retired: true }, // trains are solid now (kept so old saves still display)
+  { id: 'roof', text: (n) => `Run ${n} meters on train roofs`, scale: (l) => 80 + l * 60, event: 'roof' },
   { id: 'jetpack', text: (n) => `Fly with the jetpack ${n} time${n > 1 ? 's' : ''}`, scale: (l) => 1 + Math.floor(l / 2), event: 'jetpack' },
 ];
 const ACTIVE = () => TEMPLATES.filter((t) => !t.retired);

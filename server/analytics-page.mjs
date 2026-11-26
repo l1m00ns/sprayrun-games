@@ -67,6 +67,7 @@ tr:last-child td{border-bottom:0}.mono{font-family:ui-monospace,SFMono-Regular,C
   </section>
   <section id="dash" class="hidden">
     <div class="grid kpis" id="kpis"></div>
+    <div class="panel"><h2>Growth, activation and funnel</h2><div id="growth"></div></div>
     <div class="two">
       <div class="panel"><h2>Sessions, players and runs per day</h2><div id="chart"></div><div class="legend" id="chartLegend"></div></div>
       <div class="panel"><h2>Online now</h2><div id="live"></div><h2 style="margin-top:14px">Last 24 hours</h2><div id="hourly"></div></div>
@@ -136,6 +137,17 @@ tr:last-child td{border-bottom:0}.mono{font-family:ui-monospace,SFMono-Regular,C
       kpi('Runs',fmt(t.runs),fmt(t.matches)+' matches')+
       kpi('Avg session',dur(t.avgSession),t.bounce+'% bounce')+
       kpi('Events',fmt(t.events),d.days+' days');
+    var g=d.growth||{};
+    $('#growth').innerHTML='<div class="grid kpis">'+
+      kpi('DAU',fmt(g.dau),'today, unique runners')+
+      kpi('WAU',fmt(g.wau),'last 7 days')+
+      kpi('Runs / player',g.runsPerPlayer,'in the period')+
+      kpi('Run completion',(g.completion||0)+'%','start -> finish')+
+      kpi('Tutorial',(g.tutorial||0)+'%','of visits')+
+      kpi('Shop conversion',(g.shop||0)+'%','view -> purchase')+
+      kpi('Match rate',(g.queue||0)+'%','queue -> match')+
+      '</div>'+bars((g.funnel||[]).map(function(f){return {k:f.k,n:f.n,color:'#ff5cb8'}}))+
+      table([{label:'Step',k:'k'},{label:'Events',k:'n',num:true},{label:'Players',num:true,get:function(r){return fmt(r.players)}}],g.funnel||[],'No funnel events yet.');
     $('#chart').innerHTML=chart(d.daily);
     $('#chartLegend').innerHTML='<span><i style="background:#ffd23f"></i>sessions</span><span><i style="background:#42a5ff"></i>players</span><span><i style="background:#42e07a"></i>runs</span>';
     $('#live').innerHTML='<div style="font-size:34px;font-weight:800">'+fmt(d.online)+' <span class="pill">online</span></div><div class="muted">last event '+ago(d.lastEventAt)+'</div><div class="muted">generated '+new Date(d.generatedAt).toLocaleTimeString()+'</div>';

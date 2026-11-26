@@ -50,14 +50,16 @@ const S = {
     COALESCE(AVG(CASE WHEN last > first THEN last - first END), 0) / 1000 avgSec
     FROM an_sessions WHERE first >= ?`),
   events: db.prepare('SELECT COUNT(*) n FROM an_events WHERE at >= ?'),
-  activePlayers: db.prepare('SELECT COUNT(DISTINCT sid) n FROM an_events WHERE at >= ?'),
+  eventCount: db.prepare('SELECT COUNT(*) n FROM an_events WHERE name = ? AND at >= ?'),
+  eventPlayers: db.prepare('SELECT COUNT(DISTINCT COALESCE(pid, sid)) n FROM an_events WHERE name = ? AND at >= ?'),
+  activePlayers: db.prepare('SELECT COUNT(DISTINCT COALESCE(pid, sid)) n FROM an_events WHERE at >= ?'),
   newSessions: db.prepare('SELECT COUNT(*) n FROM an_sessions WHERE first >= ?'),
   sessionDays: db.prepare(`SELECT strftime('%Y-%m-%d', first / 1000, 'unixepoch') day, COUNT(*) n FROM an_sessions WHERE first >= ? GROUP BY day`),
-  eventDays: db.prepare(`SELECT strftime('%Y-%m-%d', at / 1000, 'unixepoch') day, COUNT(DISTINCT sid) players, COUNT(*) events,
+  eventDays: db.prepare(`SELECT strftime('%Y-%m-%d', at / 1000, 'unixepoch') day, COUNT(DISTINCT COALESCE(pid, sid)) players, COUNT(*) events,
     COALESCE(SUM(CASE WHEN name = 'run_start' THEN 1 ELSE 0 END), 0) runs,
     COALESCE(SUM(CASE WHEN name = 'match_start' THEN 1 ELSE 0 END), 0) matches
     FROM an_events WHERE at >= ? GROUP BY day`),
-  activeDayPairs: db.prepare(`SELECT DISTINCT sid, strftime('%Y-%m-%d', at / 1000, 'unixepoch') day FROM an_events WHERE at >= ?`),
+  activeDayPairs: db.prepare(`SELECT DISTINCT COALESCE(pid, sid) sid, strftime('%Y-%m-%d', at / 1000, 'unixepoch') day FROM an_events WHERE at >= ?`), // a signed-in player counts once across devices/sessions
   hourly: db.prepare('SELECT CAST((at - ?) / 3600000 AS INTEGER) h, COUNT(*) n FROM an_events WHERE at >= ? GROUP BY h'),
   topMaps: db.prepare(`SELECT COALESCE(map, '?') k, COUNT(*) n FROM an_events WHERE name = 'run_start' AND at >= ? GROUP BY k ORDER BY n DESC LIMIT 8`),
   topModes: db.prepare(`SELECT COALESCE(mode, '?') k, COUNT(*) n FROM an_events WHERE name = 'run_start' AND at >= ? GROUP BY k ORDER BY n DESC LIMIT 8`),
@@ -153,6 +155,8 @@ export function summary(days = 14, ctx = {}) {
   const events = (S.events.get(since) || {}).n || 0;
   const active = (S.activePlayers.get(since) || {}).n || 0;
   const fresh = (S.newSessions.get(since) || {}).n || 0;
+  const evn = (name) => (S.eventCount.get(name, since) || {}).n || 0;
+  const evp = (name) => (S.eventPlayers.get(name, since) || {}).n || 0;
 
   const sd = new Map(S.sessionDays.all(since).map((r) => [r.day, r.n]));
   const ed = new Map(S.eventDays.all(since).map((r) => [r.day, r]));
@@ -188,6 +192,24 @@ export function summary(days = 14, ctx = {}) {
 
   const perfAll = S.perfAll.get(since) || {};
   const list = (rows) => rows.map((r) => ({ k: r.k, n: r.n }));
+  // Growth/activation funnel: one definition per metric, computed from the same event stream as everything else.
+  const runsTotal = daily.reduce((s, d) => s + d.runs, 0);
+  const growth = {
+    dau: (daily[daily.length - 1] || {}).players || 0,
+    wau: (S.activePlayers.get(now - 7 * DAY) || {}).n || 0,
+    runsPerPlayer: active > 0 ? Math.round((runsTotal / active) * 10) / 10 : 0,
+    completion: pct(evn('run_end'), evn('run_start')),
+    tutorial: pct(evn('tutorial_done'), evn('visit')),
+    shop: pct(evn('purchase'), evn('shop_view')),
+    queue: pct(evn('match_start'), evn('queue_start')),
+    funnel: [
+      { k: 'Visits', n: evn('visit'), players: evp('visit') },
+      { k: 'Runs', n: evn('run_start'), players: evp('run_start') },
+      { k: 'Finished', n: evn('run_end'), players: evp('run_end') },
+      { k: 'Queued', n: evn('queue_start'), players: evp('queue_start') },
+      { k: 'Matched', n: evn('match_start'), players: evp('match_start') },
+    ],
+  };
   return {
     ok: true, days, generatedAt: now, online: Math.max(0, Number(ctx.online) || 0), lastEventAt: (S.lastAt.get() || {}).n || 0,
     totals: {
@@ -199,7 +221,7 @@ export function summary(days = 14, ctx = {}) {
     daily, hourly,
     maps: list(S.topMaps.all(since)), modes: list(S.topModes.all(since)),
     paths: list(S.paths.all(since)), refs: list(S.refs.all(since)),
-    devices: list(S.devices.all(since)), langs: list(S.langs.all(since)),
+    devices: list(S.devices.all(since)), langs: list(S.langs.all(since)), growth,
     perf: {
       overall: { n: perfAll.n || 0, fps: Math.round((perfAll.fps || 0) * 10) / 10, low1: Math.round((perfAll.low1 || 0) * 10) / 10, ms: Math.round((perfAll.ms || 0) * 10) / 10 },
       presets: S.perfByPreset.all(since).map((r) => ({ preset: r.preset, n: r.n, fps: Math.round((r.fps || 0) * 10) / 10, low1: Math.round((r.low1 || 0) * 10) / 10 })),

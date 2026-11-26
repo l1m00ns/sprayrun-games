@@ -5,7 +5,7 @@
 //  - every purchase is one atomic transaction (price, ownership and wallet are re-checked inside it)
 //  - cheat / secret-menu sessions never submit runs, so they can never touch the wallet, XP, boards or ranking
 import { q, tx } from './db.mjs';
-import { UPGRADE_COSTS, UPGRADE_IDS, BOARD_PRICE, BOARD_MAX, RUNNERS, COSMETICS, BUNDLES, ACHIEVEMENTS, ADVENT_DAYS, adventReward, adventState, eventActive, nowMs, dayKey, newCareer } from './catalog.mjs';
+import { UPGRADE_COSTS, UPGRADE_IDS, BOARD_PRICE, BOARD_MAX, RUNNERS, COSMETICS, BUNDLES, ACHIEVEMENTS, ADVENT_DAYS, adventReward, adventState, eventActive, eventStatus, EVENT_GIFTS, nowMs, dayKey, newCareer } from './catalog.mjs';
 import { careerOf } from './players.mjs';
 
 export const DAILY_COIN_CAP = 60000;
@@ -13,7 +13,7 @@ export const RUN_XP_CAP = 450;
 
 const SLOT_CAT = { outfit: 'outfits', board: 'boardskins', trail: 'trails', bag: 'bags', aura: 'auras', style: 'styles', skin: 'skins' };
 export const SLOTS = ['outfit', 'board', 'trail', 'bag', 'aura', 'style', 'skin'];
-export const newInv = () => ({ boards: 2, chars: ['rio', 'kit'], up: { magnet: 0, jetpack: 0, sneakers: 0, mult: 0 }, cos: [], equip: { char: 'rio', outfit: null, board: null, trail: null, bag: null, aura: null, style: null, skin: null } });
+export const newInv = () => ({ boards: 2, chars: ['rio', 'kit', 'rook'], up: { magnet: 0, jetpack: 0, sneakers: 0, mult: 0 }, cos: [], equip: { char: 'rio', outfit: null, board: null, trail: null, bag: null, aura: null, style: null, skin: null } });
 export function invOf(p) {
   let inv;
   try { inv = p.inv ? JSON.parse(p.inv) : null; } catch { inv = null; }
@@ -205,6 +205,27 @@ export function adventView(pid) {
   const claimed = q.claims.all(pid, year).map((r) => r.day);
   return adventState(claimed);
 }
+// One free gift per event occurrence: a cosmetic + coins. Reuses the same inventory path as advent.
+export function claimEventGift(pid, event) {
+  const ev = eventStatus(event);
+  const gift = EVENT_GIFTS[event];
+  if (!ev || !gift) return { ok: false, error: 'unknown_event' };
+  if (!ev.active) return { ok: false, error: 'event_not_active' };
+  return tx(() => {
+    const p = q.getPlayer.get(pid);
+    if (q.eventClaim.get(pid, event, ev.year)) return { ok: false, error: 'already_claimed' };
+    const inv = invOf(p);
+    applyGrant(inv, { cos: [gift.cos] });
+    q.claimEvent.run(pid, event, ev.year, nowMs());
+    const career = careerOf(p);
+    const unlocked = evalAchievements(career);
+    let bonus = 0;
+    for (const a of unlocked) bonus += a.reward;
+    save(pid, p, inv, p.wallet + gift.coins + bonus, { career: JSON.stringify(career) });
+    return { ok: true, event, reward: gift, achievements: unlocked.map((a) => ({ id: a.id, name: a.name, reward: a.reward })), ...stateOf(q.getPlayer.get(pid)) };
+  });
+}
+
 export function claimAdvent(pid, day) {
   day = Math.floor(Number(day));
   if (!(day >= 1 && day <= ADVENT_DAYS)) return { ok: false, error: 'bad_day' };

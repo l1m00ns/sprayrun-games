@@ -4,6 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { GradeShader } from './post.js';
 import * as C from './consts.js';
 import { clamp, damp, lerp, rand, fmt, easeInOut, easeOutCubic } from './util.js';
@@ -64,6 +65,27 @@ renderer.toneMappingExposure = 1.0;
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xcfe6f7, 70, 250);
+// Poly Haven CC0 sky, used only as the reflection/ambient environment (the visible sky stays the game shader).
+let envTex = null, envRT = null;
+function applyEnvironment() {
+  const on = !!envTex && save.settings.hdri !== false;
+  scene.environment = on ? envTex : null;
+  scene.environmentIntensity = on ? 0.72 : 1;
+}
+async function loadHdri() {
+  try {
+    const tex = await new RGBELoader().setDataType(THREE.HalfFloatType).loadAsync('/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr');
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pm = new THREE.PMREMGenerator(renderer);
+    pm.compileEquirectangularShader();
+    envRT = pm.fromEquirectangular(tex);
+    envTex = envRT.texture;
+    tex.dispose(); pm.dispose();
+    applyEnvironment();
+  } catch (e) {
+    console.warn('HDRI unavailable, using the game sky only', e && e.message);
+  }
+}
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 700);
 camera.layers.enable(1); // layer 1 = effects that the outline pass ignores
 scene.add(camera);
@@ -126,6 +148,7 @@ function applySettings(key) {
   if (all || key === 'outline') applyOutline();
   if (all || key === 'bloom' || key === 'reduceMotion') { if (bloom) bloom.enabled = s.bloom !== false && !s.reduceMotion; }
   if (all || key === 'shadows') { const on = presetOf(s.quality).shadows && s.shadows !== false; renderer.shadowMap.enabled = on; sun.castShadow = on; }
+  if (all || key === 'hdri') applyEnvironment();
   if (all || key === 'showFps') $('fpsMeter').classList.toggle('hidden', !s.showFps);
 }
 function applyOutline() { if (outline) outline.enabled = save.settings.outline !== false; }
@@ -219,10 +242,13 @@ const tick = () => new Promise((r) => setTimeout(r, 16));
 function buildPlayer() {
   if (player) scene.remove(player.root);
   player = buildCharacter(dressed(CHARACTERS[charIndex], save.equip));
+  // In the menu the camera sits in front of the runner: start him facing it (switching character used to
+  // rebuild at 0 and show his back while the idle turn caught up).
+  player.root.rotation.y = state === 'menu' ? -0.55 : 0;
   scene.add(player.root);
 }
 
-const TIPS = ['Double-tap Space to launch your hoverboard.', 'Trains with a flashing triangle are coming at you - switch lanes!', 'Trains are solid walls: change lanes, or fly over them with the Jetpack.',
+const TIPS = ['Double-tap Space to launch your hoverboard.', 'Trains with a flashing triangle are coming at you - switch lanes!', 'Super Sneakers can put you on a train roof; the front is always a wall.',
   'Roll under the striped bars, jump the red barriers.', 'In No Coin mode, every coin is a trap.', 'Ranked matches pair you with runners at your level.', 'Mystery chests hide coins, hoverboards and power-ups.', 'Each map has its own weather and surprises.'];
 // Automatic quality: render a few real frames behind the loading screen and keep the preset that matches the
 // machine. Unlike a GPU-name guess this also catches a slow CPU, a throttled laptop and software WebGL.
@@ -264,6 +290,7 @@ async function boot() {
   initWorldAssets();
   setLoad(0.55, 'Laying the tracks…');
   await tick();
+  await loadHdri(); // 1.4 MB, one request: reflections on runners, boards and metal
   sky = new Sky(scene);
   world = new World(scene);
   fx = new FX(scene);
@@ -633,6 +660,8 @@ function die(reason) {
   if (P.secondLife) { P.secondLife = false; P.inv = Math.max(P.inv, 3.2); shake = 1; flash = 1; world.clearAhead(40); audio.sfx.power(); toast('SECOND LIFE!'); return; }
   state = 'dying';
   run.dieT = 0;
+  for (const seg of world.segs) for (const s of seg.solids) if (s.vz) s.vz = 0; // an oncoming train must not drive through the body
+
   run.deathReason = reason;
   run.caughtBy = reason === 'caught';
   shake = 1;
@@ -779,12 +808,17 @@ function botThink(opt = {}) {
   }
   // ---- 3. jump / roll for barriers in the lane we are in (or about to be in)
   if (doMoves) {
-    const lane = P.target, reach = speed * (P.onBoard ? 0.22 : 0.3);
+    const lane = P.target, reach = speed * (P.onBoard ? 0.25 : 0.34);
     let nextLow = Infinity, nextOver = Infinity;
     for (let k = 0; k <= N; k++) { if (nextLow === Infinity && low[lane][k]) nextLow = k + 0.3; if (nextOver === Infinity && over[lane][k]) nextOver = k + 0.4; if (nextLow < Infinity && nextOver < Infinity) break; }
-    if (nextLow < reach && nextLow > 0.2 && P.grounded) pushAction('jump'); // a jump cancels a roll in progress
-    else if (nextOver < speed * 0.13 + 0.4 && nextOver > 0.2 && P.grounded && (!P.rolling || P.rollT < nextOver / speed + 0.25)) pushAction('roll'); // start late (the roll lasts 0.6 s), and renew it for the next bar
-    else if (!P.grounded && !P.jetting && nextOver < speed * 0.5 + 2 && nextOver > 0.2 && botCd <= 0) { pushAction('roll'); botCd = 0.3; } // in the air with a bar coming: dive, then roll on landing
+    // Handle the NEAREST obstacle first. Jumping over a low barrier cancels a roll, so a low barrier that comes
+    // after an overhead bar must not make the bot stand up right before the bar.
+    const lowFirst = nextLow <= nextOver;
+    if (lowFirst && nextLow < reach && nextLow > 0.2 && P.grounded) pushAction('jump'); // a jump cancels a roll in progress
+    // Roll early enough to be low when the bar arrives (the roll lasts 0.6 s). The old 0.13 s window needed
+    // frame-perfect timing and a single late frame was a bonk, then the guard caught the runner.
+    else if (nextOver < speed * 0.3 + 0.8 && nextOver > 0.2 && P.grounded && (!P.rolling || P.rollT < nextOver / speed + 0.3)) pushAction('roll');
+    else if (!P.grounded && !P.jetting && nextOver < speed * 0.55 + 2 && nextOver > 0.2 && botCd <= 0) { pushAction('roll'); botCd = 0.3; } // in the air with a bar coming: dive, then roll on landing
     else if (style === 'show' && !P.grounded && P.y > 1.2 && P.vy < 1 && botCd <= 0) { pushAction('roll'); botCd = 0.5; } // jump-roll dive combo
   }
   // ---- 4. nothing works: burn a hoverboard instead of crashing (and only when the crash is really about to happen)
@@ -881,7 +915,7 @@ function updatePlaying(dt) {
   const frontDepth = speed * dt * 1.6 + 0.6;
   // `sweep` = how far the world moved this frame: a train that crossed the player's plane between two frames is
   // still caught, instead of being tunnelled through at high speed.
-  const q = world.probe(P.x, P.y, P.h, frontDepth, speed * dt);
+  const q = world.probe(P.x, P.y, P.h, frontDepth, speed * dt, P.vy);
   P.ground = q.ground;
   if (!P.jetting) {
     if (P.y <= q.ground + 0.0001 && P.vy <= 0.0001) {
@@ -902,12 +936,12 @@ function updatePlaying(dt) {
 
   // roof running
   const onRoof = P.grounded && P.y > 3;
-  if (onRoof) run.roofAcc += speed * dt;
+  if (onRoof && state === 'playing') run.roofAcc += speed * dt;
 
-  // world scroll
-  world.update(dt, speed);
-  run.dist += speed * dt;
-  run.distAcc += speed * dt;
+  // world scroll: freeze the track on death so the train you hit cannot swallow the ragdoll
+  const scroll = state === 'playing' ? speed : 0;
+  world.update(dt, scroll);
+  if (scroll) { run.dist += scroll * dt; run.distAcc += scroll * dt; }
   { // fun modes: the shared vertex shader bends the whole world around the runner (kept in the game tick, not the
     // render loop, so a headless simulation and the visible world always agree)
     funA = damp(funA, run.fun === 'zigzag' ? 8 * clamp((run.dist - 40) / 140, 0, 1) : 0, 1.4, dt);
@@ -916,17 +950,19 @@ function updatePlaying(dt) {
     funSlope = funA * k * Math.cos(k * D);
   }
 
-  // scoring
+  // scoring (frozen while dying: the death cam is not a scoring phase)
   const m = scoreMult();
-  run.score += speed * dt * m * 0.9 * cheats.scoreMul;
-  run.lbScore += speed * dt * (pw.mult > 0 ? 2 : 1) * 0.9;
+  if (state === 'playing') {
+    run.score += speed * dt * m * 0.9 * cheats.scoreMul;
+    run.lbScore += speed * dt * (pw.mult > 0 ? 2 : 1) * 0.9;
+  }
   if (run.distAcc >= 10) { const d = Math.floor(run.distAcc / 10) * 10; run.distAcc -= d; report('dist', d); }
   if (run.event === 'neon' && !run.neonMagnet && run.dist > 400) { run.neonMagnet = true; activatePower('magnet'); }
   if (run.roofAcc >= 10) { const d = Math.floor(run.roofAcc / 10) * 10; run.roofAcc -= d; report('roof', d); }
 
   // coins & items
   const pp = { x: P.x, y: P.y, h: P.h };
-  world.coins.update(dt, speed, pp, pw.magnet > 0 ? 8.5 * cheats.magnetRange : 0, time, (c) => {
+  world.coins.update(dt, scroll, pp, pw.magnet > 0 ? 8.5 * cheats.magnetRange : 0, time, (c) => {
     if (run.noCoinsT > 0) return; // the Gold Rush reward switches coin collection off for 8 s
     if (run.mode === 'nocoin') {
       if (P.inv > 0 || state !== 'playing' || godNow()) return;
@@ -940,7 +976,7 @@ function updatePlaying(dt) {
     audio.sfx.coin(); fx.coinBurst(c.x, c.y, c.z, v > 1); bumpCoin();
     report('coins', v);
   }, (c) => fx.sparkle(c.x, c.y, c.z));
-  world.items.update(dt, speed, pp, camera, time, (it) => {
+  world.items.update(dt, scroll, pp, camera, time, (it) => {
     if (it.type === 'box') { openBox(it); return; }
     activatePower(it.type);
     fx.itemBurst(it.x, it.y, it.z, C.POWERUPS[it.type].color);
@@ -2183,10 +2219,11 @@ function tutRender() {
   el.innerHTML = `<div class="tut-top"><b>${t('STEP')} ${tutI + 1}/${TUT_STEPS.length}</b><span class="tut-dots">${TUT_STEPS.map((_, i) => `<i class="${i < tutI ? 'on' : ''}"></i>`).join('')}</span><button id="tutSkip">${t('SKIP')}</button></div>`
     + `<div class="tut-title">${t(s.title)}</div><div class="tut-text">${t(s.text)}</div><small>${t(s.hint)}</small>`
     + (s.time ? '<div class="tut-bar"><i></i></div>' : '');
-  const b = $('tutSkip'); if (b) b.onclick = () => { audio.sfx.click(); tutDone(); };
+  const b = $('tutSkip'); if (b) b.onclick = () => { audio.sfx.click(); tutDone(true); };
 }
-function tutDone() {
+function tutDone(skipped = false) {
   const first = !save.tutorialDone;
+  trackEvent('tutorial_done', { meta: { skipped: !!skipped } });
   save.tutorialDone = true; save.tutStep = 0; persist();
   const el = $('h-tut'); if (el) { el.innerHTML = ''; el.classList.remove('tut'); }
   if (first) { save.coins += 100; persist(); bumpCoin(); toast('TUTORIAL COMPLETE! +100'); audio.sfx.mission(); }
@@ -2241,12 +2278,12 @@ function updateCamera(dt) {
   const speedK = clamp((run.speed - C.SPEED_START) / (C.SPEED_MAX - C.SPEED_START), 0, 1.6);
   const lead = clamp(P.vx, -24, 24) * 0.04; // look where we are going
   const rx = P.x * 0.6 + lead;
-  const ry = (3.5 + base * 0.85 + air * 0.62 + (P.y - base) * 0.1 - camKick) * cheats.camHeight;
-  const rz = (6.1 + Math.min(speedK, 1.4) * 0.8 + air * 0.3) * camDist() * cheats.camBack;
-  const lx = P.x * 0.78 + lead * 1.5, ly = 1.3 + base * 0.85 + air * 0.85 + (P.y - base) * 0.15, lz = -9;
-  camX = damp(camX, rx, 8, dt);
-  camYs = damp(camYs, ry, 9, dt);
-  camZs = damp(camZs, rz, 4, dt);
+  const ry = (3.05 + base * 0.72 + air * 0.5 + (P.y - base) * 0.08 - camKick) * cheats.camHeight;
+  const rz = (5.45 + Math.min(speedK, 1.4) * 0.75 + air * 0.25) * camDist() * cheats.camBack;
+  const lx = P.x * 0.76 + lead * 1.7, ly = 1.12 + base * 0.78 + air * 0.8 + (P.y - base) * 0.12, lz = -11.2;
+  camX = damp(camX, rx, 10, dt);
+  camYs = damp(camYs, ry, 10, dt);
+  camZs = damp(camZs, rz, 4.5, dt);
   camLookX = damp(camLookX, lx, 9, dt);
   camKick = Math.max(0, camKick - dt * 1.4);
   // menu camera: 3/4 front view of the character, with a slow breathing orbit
@@ -2285,7 +2322,7 @@ function updateCamera(dt) {
   }
   camera.position.copy(camPos);
   camera.lookAt(camLook);
-  camRoll = damp(camRoll, save.settings.tilt === false || save.settings.reduceMotion ? 0 : clamp(-P.vx * 0.0024, -0.07, 0.07) * t, 7, dt);
+  camRoll = damp(camRoll, save.settings.tilt === false || save.settings.reduceMotion ? 0 : clamp(-P.vx * 0.003, -0.09, 0.09) * t, 8, dt);
   camera.rotateZ(camRoll - funSlope * 0.25);
   let fovT = (save.settings.fov || 58) + cheats.camFov + (save.settings.dynFov === false || save.settings.speedFx === false || save.settings.reduceMotion ? 0 : Math.min(speedK, 1.5) * 16) + (P.jetting ? 8 : 0) + (P.onBoard ? 3 : 0) + (pw.sneakers > 0 && !P.grounded ? 4 : 0) + (P.vy < -10 ? 4 : 0) - (P.stumbleT > 0 ? 3 : 0);
   if (state === 'dying' || state === 'over') fovT = 46;
@@ -2441,7 +2478,7 @@ function frame(now) {
 
 function updateMenuChar(dt) {
   player.root.position.set(0, 0, 0);
-  player.root.rotation.y = lerp(player.root.rotation.y, mp.counting ? 0 : Math.PI - 0.55 + Math.sin(time * 0.5) * 0.1, 1 - Math.exp(-6 * dt));
+  player.root.rotation.y = lerp(player.root.rotation.y, mp.counting ? 0 : -0.55 + Math.sin(time * 0.5) * 0.1, 1 - Math.exp(-6 * dt));
   poseCharacter(player, { state: 'idle', speed: 0, vx: 0 }, dt);
   player.board.visible = false; player.jet.visible = false;
 }
@@ -2449,9 +2486,10 @@ function updateMenuChar(dt) {
 function updatePlayerVisual(dt) {
   const ch = player;
   ch.root.position.set(P.x, P.y, 0);
-  if ((state === 'dying' || state === 'over') && run.deathKind === 'slam') { // thrown back and bouncing
+  if ((state === 'dying' || state === 'over') && run.deathKind === 'slam') { // thrown back, sideways out of the lane, then bouncing
     const cT = state === 'over' ? 2 : run.dieT;
     ch.root.position.z = Math.min(cT, 0.7) * 1.9;
+    ch.root.position.x = P.x - (P.hitSide || 0) * Math.min(cT, 0.55) * 2.6;
     ch.root.position.y += Math.max(0, Math.sin(Math.min(cT, 0.5) * 6.3)) * 0.5 * Math.exp(-cT * 2);
   }
   const introSpray = !!run.introOn && run.t < SPRAY_T && state === 'playing';
@@ -2558,7 +2596,16 @@ window.__game = {
   rebuildPlayer: () => buildPlayer(),
   bend, get funA() { return funA; },
   fastForward(m) { // test hook: scroll the world (difficulty follows the segment index), then clear the start zone and skip the intro
-    for (let d = 0; d < m; d += 30) world.update(0.1, 300);
+    for (let d = 0; d < m; d += 30) {
+      // Coins and items live in player space and are moved by the game loop, not by World.update: advance the existing
+      // ones first. Coins created by World.update for a segment spawned during this step must not be moved twice.
+      for (const c of world.coins.list) c.z += 30;
+      for (const it of world.items.list) it.z += 30;
+      world.update(0.1, 300);
+      // the real game drops what is behind the runner; without this a long fast-forward kept thousands of stale coins
+      for (let i = world.coins.list.length - 1; i >= 0; i--) if (world.coins.list[i].z > 2) world.coins.list.splice(i, 1);
+      for (let i = world.items.list.length - 1; i >= 0; i--) if (world.items.list[i].z > 2) { world.scene.remove(world.items.list[i].group); world.items.list.splice(i, 1); }
+    }
     world.clearAhead(70);
     if (run.introOn) { run.introOn = false; P.x = C.LANES[P.target]; }
   },
