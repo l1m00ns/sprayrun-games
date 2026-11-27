@@ -6,7 +6,7 @@ export const cheats = {
   gravity: 1, scoreMul: 1, coinMul: 1, magnetRange: 1, freeRevive: false,
   timeScale: 1, camHeight: 1, camBack: 1, camSpin: 0, topDown: false, sideView: false, camFov: 0,
   timeOfDay: 'auto', hideRunner: false, runnerSize: 1, bigHead: 1,
-  bot: false, botGod: false, botTag: false, botStyle: '', botReact: 105, botBoards: false,
+  bot: false, botGod: false, botTag: false, botStyle: '', botReact: 25, botBoards: false, // pro bot reaction: 25 ms is the sharpest fair setting (it reads the track, not the future)
   assist: false, autoLane: false, permMagnet: false, permSneakers: false, permMult: false,
   startPct: 0, speedMul: 1, noProgress: false, lockSpeed: false, lockValue: 0, instantSpeed: false,
   hideHud: false, grayscale: false, sepia: false, invert: false, vivid: false, disco: false,
