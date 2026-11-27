@@ -595,6 +595,7 @@ export function attachWs(server) {
   setInterval(guarded('ltmTick', ltmTick), 50).unref();
   setInterval(guarded('heartbeat', () => { for (const ws of wss.clients) { if (!ws.isAlive) { ws.terminate(); continue; } ws.isAlive = false; ws.ping(); } for (const r of rooms.values()) checkFinish(r); }), 15000).unref();
 
+  wss.on('error', (e) => console.error('[ws server]', e && e.stack ? e.stack : e)); // keep the process alive on a transport error
   wss.on('connection', (ws, req) => {
     ws.ip = clientIp(req);
     ipintel.check(ws.ip).then((v) => { ws.vpn = v; if (v.block) { send(ws, { t: 'err', code: 'vpn_blocked', msg: ipintel.blockedReply(v).message }); setTimeout(() => { try { ws.close(4003, 'vpn'); } catch { /* closed */ } }, 400); } }).catch(() => {});
@@ -609,7 +610,11 @@ export function attachWs(server) {
       let msg;
       try { msg = JSON.parse(raw.toString()); } catch { return; }
       if (!msg || typeof msg.t !== 'string') return;
-      onMessage(ws, msg, t);
+      try { onMessage(ws, msg, t); }
+      catch (e) { // one malformed action must never take the whole realtime server down
+        console.error('[ws message]', e && e.stack ? e.stack : e);
+        try { send(ws, { t: 'err', code: 'server_error', msg: 'That action could not be completed. Try again.' }); } catch { /* socket gone */ }
+      }
     });
     ws.on('close', () => { if (ws.player) untrackSocket(ws.player.id, ws); social.onClose(ws); leaveAll(ws); });
     ws.on('error', () => { if (ws.player) untrackSocket(ws.player.id, ws); social.onClose(ws); leaveAll(ws); });

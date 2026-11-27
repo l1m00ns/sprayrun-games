@@ -939,7 +939,7 @@ export class World {
         const carriages = clamp(randInt(1 + (d > 0.25 ? 1 : 0), 2 + Math.floor(d * 2.6)), 1, this.fitCars(z));
         let span = 0, rampLane = -1;
         for (const l of set) {
-          const ramp = C.ROOF_RUN && rampLane < 0 && chance(0.6);
+          const ramp = C.ROOF_RUN && rampLane < 0 && chance(0.85);
           const k = nl === 2 && chance(0.5) ? Math.max(1, carriages - 1) : carriages;
           const r = this.placeTrain(seg, l, z, k, ramp, biome);
           span = Math.max(span, z - (r.zt - r.len));

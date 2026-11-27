@@ -413,15 +413,16 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 7px; border-radius: 7
 /* every icon inside a button is a block box centred by its parent: no more baseline drift */
 button svg[aria-hidden], .icon-btn svg { display: block; }
 .icon-btn { display: inline-grid; place-items: center; }
-@media (max-width: 1450px) { .tb-tab:not(.sel) .tb-lbl { display: none; } .tb-tab:not(.sel) { padding: 0 11px; } #tbTabs { gap: 4px; } }
+@media (max-width: 1450px) { .tb-tab, .tb-tab:not(.sel) { padding: 0 8px; gap: 5px; font-size: 15px; } .tb-tab .tb-lbl { font-size: 14px; } #tbTabs { gap: 2px; } }
 @media (max-width: 1100px) { .tb-tab.sel .tb-lbl { display: none; } .tb-tab, .tb-tab:not(.sel) { padding: 0 11px; } }
 
 /* phone menu: three bars + a sheet with every tab (the old bottom nav stays for tablets that have room) */
 .tb-menu { display: none; flex: none; }
 .tb-bars { display: grid; gap: 4px; width: 21px; }
 .tb-bars i { display: block; height: 3px; border-radius: 3px; background: currentColor; }
-#tbDrawer { position: fixed; inset: 0; z-index: 70; background: rgba(4,7,20,.68); backdrop-filter: blur(3px); padding: calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px); display: grid; align-items: start; }
+#tbDrawer { position: fixed; inset: 0; z-index: 70; pointer-events: auto; background: rgba(4,7,20,.68); backdrop-filter: blur(3px); padding: calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px); display: grid; align-items: start; overflow-y: auto; overscroll-behavior: contain; }
 #tbDrawer.hidden { display: none; }
+#tbDrawer .tbd-sheet, #tbDrawer button { pointer-events: auto; }
 .tbd-sheet { margin: 0 auto; width: min(560px, 100%); max-height: 92vh; overflow: auto; padding: 14px; border-radius: 22px; border: 2px solid var(--line); background: linear-gradient(160deg, #18224b, #0b1230); box-shadow: 0 24px 60px rgba(0,0,0,.55); }
 .tbd-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: var(--yellow); font: 400 26px/1 var(--font); letter-spacing: 1px; }
 .tbd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -434,9 +435,29 @@ button svg[aria-hidden], .icon-btn svg { display: block; }
   .tb-menu { display: grid; }
   #tbTabs { display: none !important; }
   .tb-right #tbFriends, .tb-right #tbLang, .tb-right #btnSettings { display: none; }
-  .tb-right { gap: 8px; }
+  .tb-right { gap: 8px; margin-left: auto; }
+  .tb-level, .tb-acct { display: none !important; }
+  #m-side-btns, #unlockBtn { display: none !important; }
+  #m-bottom .modecard { order: 1; }
+  #m-bottom #playBtn { order: 2; }
+  #m-bottom .picker { order: 3; }
+  #m-bottom #partyStrip { order: 0; }
 }
-@media (max-width: 520px) { .tbd-grid { grid-template-columns: 1fr; } .tbd-item { min-height: 50px; } }
+@media (max-width: 520px) { .tbd-grid { grid-template-columns: 1fr 1fr; } .tbd-item { min-height: 54px; padding: 8px 10px; font-size: 16px; gap: 8px; } .tbd-item .tb-ic, .tbd-item .tb-ic svg { width: 22px; height: 22px; } }
+.tbd-head .icon-btn { width: 44px; height: 44px; border-radius: 12px; }
+@media (max-height: 520px) {
+  #tbDrawer { padding: calc(env(safe-area-inset-top) + 6px) 8px calc(env(safe-area-inset-bottom) + 6px); }
+  .tbd-sheet { max-height: 96vh; padding: 10px; }
+  .tbd-head { font-size: 21px; margin-bottom: 7px; }
+  .tbd-item { min-height: 44px; padding: 6px 10px; font-size: 15px; }
+  .tbd-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .tbd-note { display: none; }
+}
+
+/* the old shortcut column duplicated the mode picker: keep one obvious PLAY path */
+#m-side-btns { display: none !important; }
+/* the menu is a launch screen, not a cockpit: missions, records and the duplicate mode list live in Career/Settings */
+#m-missions, #m-stats, #m-modes { display: none !important; }
 
 /* the party sits on the left like a lobby roster, away from the runner */
 #partyStrip { position: fixed; left: 18px; top: calc(var(--bar-h) + 262px); flex-direction: column; align-items: flex-start; gap: 10px; margin: 0; z-index: 3; }

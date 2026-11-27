@@ -11,7 +11,7 @@ npm run dev:all          # backend (http://localhost:4000) + web (http://localho
 npm run build && npm start   # production : UI + API + temps réel sur le même port (3000)
 npm run dev              # tout-en-un en développement (HMR)
 ```
-Base SQLite dans `data/` (`DATA_DIR`). Node ≥ 22.13. Le client parle à son propre serveur par défaut. **Backend ailleurs (Render, Railway…)** : `NEXT_PUBLIC_BACKEND_URL=https://ton-service.onrender.com` dans le `.env` du front (figé au `npm run build`), ou `public/config.js` pour changer sans reconstruire ; côté backend `CORS_ORIGIN=https://ton-front` et `TRUST_PROXY=1`. La version s’affiche dans Paramètres (`3.0.1-<commit>`).
+Base SQLite dans `data/` (`DATA_DIR`). Node ≥ 22.13. Le client parle à son propre serveur par défaut. **Backend ailleurs (Render, Railway…)** : `NEXT_PUBLIC_BACKEND_URL=https://ton-service.onrender.com` dans le `.env` du front (figé au `npm run build`), ou `public/config.js` pour changer sans reconstruire ; côté backend `CORS_ORIGIN=https://ton-front` et `TRUST_PROXY=1`. La version s’affiche dans Paramètres (`3.1.2-<commit>`).
 
 ## Jeu
 - **5 cartes + World Tour**, météo, jour/nuit, scènes animées, **graffitis**, animation de départ. **Palm Bay** refaite : mer animée (reflets, écume), ponton, bar tiki, filet de volley, serviettes, pirogue, bouées, palmiers penchés.
@@ -22,6 +22,13 @@ Base SQLite dans `data/` (`DATA_DIR`). Node ≥ 22.13. Le client parle à son pr
 - **Quatre saisons** (horloge UTC identique pour tous) : **Egg Hunt** (20 mars → 20 avril), **Haunted Rails** (1er oct. → 2 nov.), **Winter Fest** (1er déc. → 6 janv.) et **calendrier de l'avent** de 25 portes. Chaque événement a ses cosmétiques limités et un **cadeau gratuit** à réclamer une fois par compte.
 - **Langues** : bouton 🌐 + écran d'accueil à la première visite (langue, apparence, commandes/caméra, fair-play & vie privée, compte). Anglais et français (traduction en direct de toute l'interface ; ajouter une langue = un dictionnaire dans `src/i18n.js`).
 - **Interface** : barre supérieure (Jouer, Boutique, Carrière, Classement, Événements, Mises à jour, Support), profil, **statistiques** en graphiques, **paramètres** (≈35 options : graphismes, caméra, commandes, audio, accessibilité), aucune pop-up navigateur (dialogues natifs), scrollbars masquées.
+
+## 3.1.2 — mobile simple, caméra haute, toits accessibles
+- **Mobile** : barre réduite à l’essentiel (logo, pièces, menu trois barres), feuille de menu réellement cliquable, onglets et actions en grandes cibles, version complète visible.
+- **Jeu** : accueil réduit au mode, à JOUER et au coureur ; raccourcis en double et cartes latérales masqués sur téléphone.
+- **Caméra** : plus haute et plus en arrière, regard plus loin sur la piste, comme un runner de type Subway Surfers.
+- **Trains** : rampes fréquentes vers les toits, pièces de toit de retour ; les flancs et l’avant restent solides.
+- **Backend** : erreur de message WebSocket isolée, erreurs de transport gérées, code de salle copiable.
 
 ## 3.0.1 — mobile, hitbox, multijoueur
 - **Menu téléphone** : bouton trois barres et feuille avec tous les onglets, compte, amis, réglages et langue ; cibles tactiles plus grandes et safe-area respectée.

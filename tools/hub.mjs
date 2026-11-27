@@ -34,7 +34,7 @@ try {
 
   await tab('events');
   t = await text();
-  ok('events: Winter Fest + Gold Rush + advent calendar', /Winter Fest/.test(t) && /Gold Rush/i.test(t) && /Advent calendar/.test(t));
+  ok('events: Winter Fest + the limited-time race + advent calendar', /Winter Fest/.test(t) && /(Gold Rush|Neon Rush)/i.test(t) && /Advent calendar/.test(t));
   const doors = await page.evaluate(() => ({ open: document.querySelectorAll('.door.open').length, locked: document.querySelectorAll('.door.locked').length }));
   ok('advent: 10 doors open, 15 locked on Dec 10', doors.open === 10 && doors.locked === 15, JSON.stringify(doors));
   await shot('events');
@@ -60,7 +60,7 @@ try {
   ok('career page: level, stats, achievements', /Level \d/.test(t) && /Achievements/.test(t) && /Runs/.test(t));
   await shot('career');
   await tab('leaderboard'); t = await text(); ok('leaderboard page renders', /LEADERBOARD/.test(t));
-  await tab('updates'); t = await text(); ok('updates page lists v3.0.1', /v3\.0\.1/.test(t) && /Multiplayer|Neon|Spectator/.test(t));
+  await tab('updates'); t = await text(); ok('updates page lists v3.1.2', /v3\.1\.2/.test(t) && /mobile|camera|roof/i.test(t));
   await shot('updates');
   await tab('support'); t = await text(); ok('support page opens', /SUPPORT/.test(t) && /NEW REQUEST/.test(t));
 

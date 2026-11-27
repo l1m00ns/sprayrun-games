@@ -4,6 +4,7 @@ import * as C from './consts.js';
 import { OUTFITS, BOARDS, TRAILS, SKINS, BAGS, AURAS } from './cosmetics.js';
 import { boardSVG } from './icons.js';
 import { fillIcons, icon } from './iconsax.js';
+import { GAME_FULL_VERSION } from './version.js';
 import { trackEvent } from './analytics.js';
 
 const $ = (id) => document.getElementById(id);
@@ -115,7 +116,7 @@ export function initHub(ctx) {
   const closeDrawer = () => { drawer.classList.add('hidden'); drawer.setAttribute('aria-hidden', 'true'); menuBtn.setAttribute('aria-expanded', 'false'); };
   if (drawer && menuBtn) {
     const tabs = [...document.querySelectorAll('#tbTabs .tb-tab')].map((b) => `<button class="tbd-item" data-nav="${b.dataset.tab}">${b.querySelector('.tb-ic') ? b.querySelector('.tb-ic').outerHTML : ''}<span>${esc(b.querySelector('.tb-lbl').textContent)}</span></button>`).join('');
-    drawer.innerHTML = `<div class="tbd-sheet"><div class="tbd-head"><b>MENU</b><button class="icon-btn" id="tbDrawerClose" aria-label="Close menu">${icon('close', 20)}</button></div><div class="tbd-grid">${tabs}<button class="tbd-item" data-act="account"><span class="tb-ic">${icon('user', 22)}</span><span>ACCOUNT</span></button><button class="tbd-item" data-act="friends"><span class="tb-ic">${icon('users', 22)}</span><span>FRIENDS</span></button><button class="tbd-item" data-act="settings"><span class="tb-ic">${icon('settings', 22)}</span><span>SETTINGS</span></button><button class="tbd-item" data-act="lang"><span class="tb-ic">${icon('language', 22)}</span><span>LANGUAGE</span></button></div><p class="tbd-note">Everything in one place</p></div>`;
+    drawer.innerHTML = `<div class="tbd-sheet"><div class="tbd-head"><b>MENU</b><button class="icon-btn" id="tbDrawerClose" aria-label="Close menu">${icon('close', 20)}</button></div><div class="tbd-grid">${tabs}<button class="tbd-item" data-act="account"><span class="tb-ic">${icon('user', 22)}</span><span>ACCOUNT</span></button><button class="tbd-item" data-act="friends"><span class="tb-ic">${icon('users', 22)}</span><span>FRIENDS</span></button><button class="tbd-item" data-act="settings"><span class="tb-ic">${icon('settings', 22)}</span><span>SETTINGS</span></button><button class="tbd-item" data-act="lang"><span class="tb-ic">${icon('language', 22)}</span><span>LANGUAGE</span></button></div><p class="tbd-note">v${esc(GAME_FULL_VERSION)}</p></div>`;
     fillIcons(drawer);
     const toggle = (on = drawer.classList.contains('hidden')) => { drawer.classList.toggle('hidden', !on); drawer.setAttribute('aria-hidden', String(!on)); menuBtn.setAttribute('aria-expanded', String(on)); if (on) audio.sfx.click(); };
     menuBtn.onclick = (e) => { e.stopPropagation(); toggle(); };

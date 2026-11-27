@@ -27,7 +27,7 @@ const stats = await page.evaluate(() => {
   return out;
 });
 console.log(JSON.stringify(stats));
-ok(stats.early.ramps === 0 && stats.mid.ramps === 0 && stats.late.ramps === 0, 'no ramps are generated (trains are walls)');
+ok(stats.mid.ramps > 0 && stats.late.ramps > 0, 'ramps lead onto train roofs', `early=${stats.early.ramps} mid=${stats.mid.ramps} late=${stats.late.ramps}`);
 ok(stats.late.maxCars >= 4, 'late game has trains of 4+ carriages', `max=${stats.late.maxCars}`);
 ok(stats.late.avgMovingCars > stats.early.avgMovingCars, 'oncoming trains get longer over the run', `${stats.early.avgMovingCars} -> ${stats.late.avgMovingCars}`);
 ok(stats.mid.trains > stats.early.trains, 'more trains as the run goes on', `${stats.early.trains} -> ${stats.mid.trains}`);

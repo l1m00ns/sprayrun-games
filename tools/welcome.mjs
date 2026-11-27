@@ -32,22 +32,15 @@ try {
   await sleep(700);
   ok('choosing French translates the flow immediately', /BIENVENUE/.test(await txt('#obBody')), (await txt('#obBody')).replace(/\n/g, ' ').slice(0, 60));
   ok('the top bar follows (JOUER / BOUTIQUE)', /JOUER/.test(await page.evaluate(() => document.getElementById('tbTabs').textContent)) && /BOUTIQUE/.test(await page.evaluate(() => document.getElementById('tbTabs').textContent)));
-  await page.evaluate(() => document.getElementById('obNext').click()); await sleep(500);
-  await shot('2-look');
-  await page.evaluate(() => document.querySelector('#obBody .obcard[data-v="low"]').click()); await sleep(300);
-  await page.evaluate(() => document.getElementById('obNext').click()); await sleep(500);
-  await page.evaluate(() => document.querySelector('#obBody [data-key="controls"] .obcard[data-v="classic"]').click()); await sleep(300);
-  await page.evaluate(() => document.querySelector('#obBody [data-key="camera"] .obcard[data-v="far"]').click()); await sleep(300);
-  await shot('3-controls');
-  await page.evaluate(() => document.getElementById('obNext').click()); await sleep(500);
-  ok('fair-play & privacy step explains VPN + device checks', /VPN/.test(await txt('#obBody')) && /ban/i.test(await txt('#obBody')));
-  await shot('4-privacy');
-  await page.evaluate(() => document.getElementById('obNext').click()); await sleep(500);
-  await page.evaluate(() => document.querySelector('#obBody [data-act="guest"]').click()); await sleep(600);
-  const s = await page.evaluate(() => ({ onb: window.__game.save.onboarded, lang: window.__game.save.settings.lang, ctl: window.__game.save.settings.controls, cam: window.__game.save.settings.camera, q: window.__game.save.settings.quality, hidden: document.getElementById('onboard').classList.contains('hidden'), htmlLang: document.documentElement.lang }));
-  ok('choices are saved and the flow closes', s.onb === true && s.lang === 'fr' && s.ctl === 'classic' && s.cam === 'far' && s.q === 'low' && s.hidden && s.htmlLang === 'fr', JSON.stringify(s));
+  // The first visit is one decision: language -> PLAY, then the run starts immediately.
+  await page.evaluate(() => document.getElementById('obNext').click()); await sleep(1400);
+  const s = await page.evaluate(() => ({ onb: window.__game.save.onboarded, lang: window.__game.save.settings.lang, state: window.__game.state, hidden: document.getElementById('onboard').classList.contains('hidden'), htmlLang: document.documentElement.lang }));
+  ok('language is saved and PLAY closes the welcome flow', s.onb === true && s.lang === 'fr' && s.hidden && s.htmlLang === 'fr', JSON.stringify(s));
+  ok('PLAY NOW starts the run without another menu step', s.state === 'playing', s.state);
+  await page.evaluate(() => window.__game.die('manual')); await sleep(2600);
+  await page.evaluate(() => document.getElementById('btnHome').click()); await sleep(800);
   ok('the menu is in French', /MISSIONS/.test(await txt('#m-missions')) && /Meilleur score/.test(await txt('#m-stats')) && /CARTE/.test(await txt('#m-maps')));
-  await shot('5-menu-fr');
+  await shot('2-menu-fr');
   // language button
   await page.evaluate(() => document.getElementById('tbLang').click()); await sleep(400);
   ok('language button opens the picker', await page.evaluate(() => !document.getElementById('langModal').classList.contains('hidden')));

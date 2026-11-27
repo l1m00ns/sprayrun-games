@@ -1,6 +1,6 @@
 {
   "name": "reverse-surfers",
-  "version": "3.0.1",
+  "version": "3.1.2",
   "description": "Reverse Surfers - an original 3D endless runner for the web",
   "scripts": {
     "dev": "node server.mjs",

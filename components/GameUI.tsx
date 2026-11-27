@@ -31,8 +31,6 @@ export default function GameUI() {
             <button className="tb-tab" data-tab="updates"><span className="tb-ic" data-ic="updates" data-duo="" data-s="22"></span><span className="tb-lbl">UPDATES</span><i className="tb-badge" id="tbUpBadge"></i></button>
             <button className="tb-tab" data-tab="support"><span className="tb-ic" data-ic="support" data-duo="" data-s="22"></span><span className="tb-lbl">SUPPORT</span></button>
           </nav>
-          <button id="tbMenu" className="btn round sm tb-menu" aria-label="Open menu" aria-expanded="false"><span className="tb-bars"><i></i><i></i><i></i></span></button>
-          <div id="tbDrawer" className="hidden" aria-hidden="true"></div>
           <div className="tb-right">
             <span className="pill online" id="mOnline"><span className="dotlive off"></span>Offline</span>
             <div className="pill tb-coins"><span className="coin-i"></span><span id="mCoins">0</span></div>
@@ -41,7 +39,9 @@ export default function GameUI() {
             <button className="btn round sm" id="tbFriends" title="Friends"><span data-ic="users" data-s="22"></span><i className="tb-badge" id="tbFrBadge"></i></button>
             <button className="btn round sm" id="tbLang" title="Language"><img id="tbLangFlag" className="flag-btn" src="/flags/gb.svg" alt="" /><b id="tbLangCode">EN</b></button>
             <button className="btn round sm" id="btnSettings" title="Settings"><span data-ic="settings" data-s="22"></span></button>
+            <button id="tbMenu" className="btn round sm tb-menu" aria-label="Open menu" aria-expanded="false"><span className="tb-bars"><i></i><i></i><i></i></span></button>
           </div>
+          <div id="tbDrawer" className="hidden" aria-hidden="true"></div>
         </div>
         <div id="hubpage" className="hidden"><div id="hubBody"></div></div>
 
@@ -126,6 +126,7 @@ export default function GameUI() {
             </div>
             <div id="lobRoom" style={{ display: 'none' }}>
               <div className="code-big" id="lobRoomCode">----</div>
+              <button className="btn sm" id="copyRoomCode">COPY ROOM CODE</button>
               <div className="stage-note" id="lobMapNote"></div>
               <div id="lobPlayers"></div>
               <div className="set-row" id="lobMapRow"><span>Map</span><select id="lobMap"></select></div>

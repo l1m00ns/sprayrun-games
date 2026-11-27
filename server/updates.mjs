@@ -1,6 +1,17 @@
 // Update history shown in the game's "Updates" tab. Newest first. Edit this file when you ship something.
 export const UPDATES = [
   {
+    version: '3.1.2', date: '2026-11-27', title: 'Simple mobile play, higher camera, roof route',
+    tags: ['major', 'mobile', 'fix', 'gameplay'],
+    notes: [
+      'The phone menu now really responds to touch: the sheet has its own pointer surface, every tab and account action is a large tap target, and the bar is reduced to the essentials (logo, coins, three bars).',
+      'The mobile home is just the selected mode, PLAY and your runner. Extra shortcuts, duplicate cards and the old side buttons are gone on phones; every page stays in the menu sheet.',
+      'The chase camera is higher and farther back, with a longer look down the track, so upcoming trains and barriers are visible earlier.',
+      'Train roofs are a route again: a ramp on most trains gives a clear way up, the front stays solid, and roof coins are back. The full version code is visible in the mobile menu.',
+      'Backend: a malformed WebSocket action can no longer stop the process, the socket server handles transport errors, and room codes gained a copy button.',
+    ],
+  },
+  {
     version: '3.0.1', date: '2026-11-26', title: 'Mobile hub, honest hitboxes, mode fix',
     tags: ['major', 'mobile', 'fix', 'online'],
     notes: [

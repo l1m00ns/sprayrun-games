@@ -62,10 +62,9 @@ export const CARRIAGE_GAP = 0.35;
 export const TRAIN_W = 1.9;
 export const TRAIN_BOTTOM = 0.5;
 export const TRAIN_H = 3.35; // low enough to land on with a normal jump (JUMP_H 3.22 + STEP_TOL 0.42)
-// Trains and containers are solid from the side. Their roofs are still landable (a Super Sneakers jump reaches
-// them), but there are no ramps and no roof coin lines any more: the only way up is the high jump.
-// ROOF_LAND was split from ROOF_RUN so the generator can keep roofs useful without rebuilding the old ramp route.
-export const ROOF_RUN = false;
+// Trains and containers are solid from the side, but their roofs are a real route: a ramp on some trains gives
+// an easy, readable way up, and a normal jump can still land on a roof. Sides stay lethal.
+export const ROOF_RUN = true;
 export const ROOF_LAND = true;
 
 export const LOW_H = 1.0;

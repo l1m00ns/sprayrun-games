@@ -257,7 +257,7 @@ function buildPlayer() {
   } catch { P.hw = C.PLAYER_HW; }
 }
 
-const TIPS = ['Double-tap Space to launch your hoverboard.', 'Trains with a flashing triangle are coming at you - switch lanes!', 'Super Sneakers can put you on a train roof; the front is always a wall.',
+const TIPS = ['Double-tap Space to launch your hoverboard.', 'Trains with a flashing triangle are coming at you - switch lanes!', 'Follow a ramp onto the roof for coins; the front of a train is always a wall.',
   'Roll under the striped bars, jump the red barriers.', 'In No Coin mode, every coin is a trap.', 'Ranked matches pair you with runners at your level.', 'Mystery chests hide coins, hoverboards and power-ups.', 'Each map has its own weather and surprises.'];
 // Automatic quality: render a few real frames behind the loading screen and keep the preset that matches the
 // machine. Unlike a GPU-name guess this also catches a slow CPU, a throttled laptop and software WebGL.
@@ -481,6 +481,7 @@ function startRun(opts = {}) {
   world.startRun();
   world.dist = 0;
   state = 'playing';
+  menuBlend = 0; // start already on the high chase camera: no low menu shot that hides the first obstacle
   if (run.event === 'neon') { clearTimeout(run.neonT); run.neonT = setTimeout(() => { if (state === 'playing' && run.event === 'neon') activatePower('mult'); }, 2600); }
   run.intro = true;
   online.ticket = null; online.submitted = false;
@@ -749,7 +750,7 @@ function botThink(opt = {}) {
       if (d1 < -0.5 || d0 > N + 1) continue;
       const lane = Math.round(s.x / C.LANE_W) + 1;
       if (lane < 0 || lane > 2) continue;
-      if (s.kind === 'train' || s.kind === 'container' || s.kind === 'ramp') fill(wall[lane], d0, d1);
+      if (s.kind === 'train' || s.kind === 'container' || s.kind === 'ramp') fill(wall[lane], d0, d1); // the bot avoids ramps: it has no height model for the roof route
       else if (s.kind === 'low') fill(low[lane], d0 - 0.2, d0 + 0.8);
       else if (s.kind === 'over') fill(over[lane], d0 - 0.4, d0 + 1.1);
     }
@@ -1367,7 +1368,7 @@ function setupUI() {
   };
   $('btnReset').onclick = async () => { if (await confirmDlg('This erases coins, characters, upgrades and records stored on this device.', { danger: true, yes: 'ERASE' })) { resetSave(); location.reload(); } };
   initHubUI();
-  onboarding = createOnboarding({ save, persist, applySettings, click: () => audio.sfx.click(), openAccount: () => { hubUI.setBarVisible(true); hubUI.open('account'); }, done: () => { renderMenu(); } });
+  onboarding = createOnboarding({ save, persist, applySettings, click: () => audio.sfx.click(), openAccount: () => { hubUI.setBarVisible(true); hubUI.open('account'); }, done: () => { renderMenu(); }, start: () => tryPlay() });
   $('tbLang').onclick = () => { audio.initAudio(); audio.sfx.click(); openLanguagePicker({ save, persist, onChange: () => { $('tbLangCode').textContent = getLang().toUpperCase(); } }); };
   duelCtl = createDuel({ renderer, canvas, save, cheats, audio, send: (o) => net.send(o), myId: () => net.id, serverNow: api.serverNow, onEnd: showDuelResult });
   window.addEventListener('resize', () => duelCtl.resize());
@@ -2063,6 +2064,7 @@ function renderLobby() {
   if (!m) return;
   showLobbyViewRef('room');
   $('lobRoomCode').textContent = m.code;
+  $('copyRoomCode').onclick = async () => { try { await navigator.clipboard.writeText(m.code); toast('Room code copied'); } catch { toast(m.code); } };
   $('lobMapNote').textContent = m.ranked ? 'Ranked match' : m.pub ? 'Public room - share the code with friends' : 'Private room - share the code with friends';
   const isHost = m.host === net.id;
   $('lobPlayers').innerHTML = m.players.map((p) => `<div class="lob-row${p.id === net.id ? ' me' : ''}"><b>${escapeHtml(p.name)}</b><span style="opacity:.7">${escapeHtml((CHARACTERS.find((c) => c.id === p.char) || CHARACTERS[0]).name)}</span>${p.id === m.host ? '<span class="tag host">HOST</span>' : `<span class="tag ${p.ready ? 'ok' : ''}">${p.ready ? 'READY' : 'WAITING'}</span>`}</div>`).join('');
@@ -2195,11 +2197,11 @@ function updateCamera(dt) {
       const z = -(lead.d - run.dist); // the leader in this client's track space
       const lx = lead.x || 0, ly = Math.max(0, lead.y || 0);
       camX = damp(camX, lx * 0.6, 9, dt);
-      camYs = damp(camYs, 3.55 + ly + (lead.sp > 22 ? 0.18 : 0), 8, dt);
-      camZs = damp(camZs, 5.85, 7, dt);
+      camYs = damp(camYs, 4.95 + ly + (lead.sp > 22 ? 0.18 : 0), 8, dt);
+      camZs = damp(camZs, 7.45, 7, dt);
       camLookX = damp(camLookX, lx * 0.76, 10, dt);
       camera.position.set(camX, camYs, camZs);
-      camLook.set(camLookX, 1.2 + ly, z - 11.2);
+      camLook.set(camLookX, 0.95 + ly, z - 14.5);
       camera.lookAt(camLook);
       camera.fov = 58; camera.updateProjectionMatrix();
       return;
@@ -2211,9 +2213,11 @@ function updateCamera(dt) {
   const speedK = clamp((run.speed - C.SPEED_START) / (C.SPEED_MAX - C.SPEED_START), 0, 1.6);
   const lead = clamp(P.vx, -24, 24) * 0.04; // look where we are going
   const rx = P.x * 0.6 + lead;
-  const ry = (3.35 + base * 0.72 + air * 0.5 + (P.y - base) * 0.08 - camKick) * cheats.camHeight;
-  const rz = (5.45 + Math.min(speedK, 1.4) * 0.75 + air * 0.25) * camDist() * cheats.camBack;
-  const lx = P.x * 0.76 + lead * 1.7, ly = 1.12 + base * 0.78 + air * 0.8 + (P.y - base) * 0.12, lz = -11.2;
+  // Subway-Surfers-style rig: higher and farther back, looking farther down the track, so the next barriers,
+  // oncoming trains and roof paths are readable before they arrive.
+  const ry = (4.95 + base * 0.62 + air * 0.48 + (P.y - base) * 0.07 - camKick) * cheats.camHeight;
+  const rz = (7.35 + Math.min(speedK, 1.4) * 0.85 + air * 0.22) * camDist() * cheats.camBack;
+  const lx = P.x * 0.74 + lead * 1.7, ly = 0.92 + base * 0.72 + air * 0.8 + (P.y - base) * 0.11, lz = -14.8;
   camX = damp(camX, rx, 10, dt);
   camYs = damp(camYs, ry, 10, dt);
   camZs = damp(camZs, rz, 4.5, dt);
